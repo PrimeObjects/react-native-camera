@@ -8,6 +8,9 @@
 #import <React/UIView+React.h>
 #import <MobileCoreServices/MobileCoreServices.h>
 #import  "RNSensorOrientationChecker.h"
+
+#define DEGREES_RADIANS(angle) ((angle) / 180.0 * M_PI)
+
 @interface RNCamera ()
 
 @property (nonatomic, weak) RCTBridge *bridge;
@@ -40,9 +43,14 @@
 @property (nonatomic, assign) BOOL isFocusedOnPoint;
 @property (nonatomic, assign) BOOL isExposedOnPoint;
 
+@property (nonatomic, copy) RCTDirectEventBlock onVideoMergeProgressUpdated;
+@property (nonatomic, assign, getter=isSessionPaused) BOOL paused;
+
 @end
 
 @implementation RNCamera
+
+@synthesize recordingState = _recordingState;
 
 static NSDictionary *defaultFaceDetectorOptions = nil;
 
@@ -73,6 +81,17 @@ BOOL _sessionInterrupted = NO;
         self.previewLayer.needsDisplayOnBoundsChange = YES;
 #endif
         self.rectOfInterest = CGRectMake(0, 0, 1.0, 1.0);
+
+        self.paused = NO;
+        self.recordingState = RNRecordingStateStopped;
+        [self changePreviewOrientation:[UIApplication sharedApplication].statusBarOrientation];
+        [self initializeCaptureSessionInput];
+        [self startSession];
+        self.videoFileURLsToMerge = [[NSMutableArray alloc] init];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(orientationChanged:)
+                                                     name:UIDeviceOrientationDidChangeNotification
+                                                   object:nil];
         self.autoFocus = -1;
         self.exposure = -1;
         self.presetCamera = AVCaptureDevicePositionUnspecified;
@@ -139,6 +158,13 @@ BOOL _sessionInterrupted = NO;
 {
     if (_onSubjectAreaChanged) {
         _onSubjectAreaChanged(event);
+    }
+}
+
+- (void)onVideoMergeProgUpdated:(NSDictionary *)event
+{
+    if (_onVideoMergeProgressUpdated) {
+        _onVideoMergeProgressUpdated(event);
     }
 }
 
@@ -249,11 +275,23 @@ BOOL _sessionInterrupted = NO;
     return preset;
 }
 
+- (void)removeFromSuperview
+{
+    [self stopSession];
+    [super removeFromSuperview];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:UIDeviceOrientationDidChangeNotification object:nil];
+}
 
 -(void)updateType
 {
     [self initializeCaptureSessionInput];
     [self startSession]; // will already check if session is running
+    // dispatch_async(self.sessionQueue, ^{
+    //     [self initializeCaptureSessionInput];
+    //     if (!self.session.isRunning) {
+    //         [self startSession];
+    //     }
+    // });
 }
 
 
@@ -1610,6 +1648,178 @@ BOOL _sessionInterrupted = NO;
     });
 }
 
+
+- (void)pauseRecording
+{
+    [self setRecordingState:RNRecordingStatePaused];
+    [self.movieFileOutput stopRecording];
+}
+
+- (void)resumeRecording
+{
+    [self record:self.videoOptions resolve:self.videoRecordedResolve reject:self.videoRecordedReject];
+}
+
+- (void)setRecordingState:(enum RNRecordingState)state
+{
+    _recordingState = state;
+}
+
+- (enum RNRecordingState)recordingState
+{
+    return _recordingState;
+}
+
+
+- (void)record:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+{
+    if (self.recordingState == RNRecordingStateRecording || self.recordingState == RNRecordingStateResumed) {
+        return;
+    } else if (self.recordingState == RNRecordingStateStopped) {
+        [self setRecordingState:RNRecordingStateRecording];
+        self.videoOptions = options;
+    } else if (self.recordingState == RNRecordingStatePaused) {
+        [self setRecordingState:RNRecordingStateResumed];
+        options = self.videoOptions;
+    }
+
+    if (_movieFileOutput == nil) {
+        // At the time of writing AVCaptureMovieFileOutput and AVCaptureVideoDataOutput (> GMVDataOutput)
+        // cannot coexist on the same AVSession (see: https://stackoverflow.com/a/4986032/1123156).
+        // We stop face detection here and restart it in when AVCaptureMovieFileOutput finishes recording.
+    #if __has_include(<GoogleMobileVision/GoogleMobileVision.h>)
+        [_faceDetectorManager stopFaceDetection];
+    #endif
+        [self setupMovieFileCapture];
+    }
+
+    if (self.movieFileOutput == nil || self.movieFileOutput.isRecording || _videoRecordedResolve != nil || _videoRecordedReject != nil) {
+        [self.session commitConfiguration];
+      return;
+    }
+
+    if (options[@"maxDuration"]) {
+        Float64 maxDuration = [options[@"maxDuration"] floatValue];
+        self.movieFileOutput.maxRecordedDuration = CMTimeMakeWithSeconds(maxDuration, 30);
+    }
+
+    if (options[@"maxFileSize"]) {
+        self.movieFileOutput.maxRecordedFileSize = [options[@"maxFileSize"] integerValue];
+    }
+
+    if (options[@"quality"]) {
+        [self updateSessionPreset:[RNCameraUtils captureSessionPresetForVideoResolution:(RNCameraVideoResolution)[options[@"quality"] integerValue]]];
+    }
+
+    [self updateSessionAudioIsMuted:!!options[@"mute"]];
+
+    AVCaptureConnection *connection = [self.movieFileOutput connectionWithMediaType:AVMediaTypeVideo];
+    [connection setVideoOrientation:[RNCameraUtils videoOrientationForInterfaceOrientation:[[UIApplication sharedApplication] statusBarOrientation]]];
+
+    if (options[@"codec"]) {
+      AVVideoCodecType videoCodecType = options[@"codec"];
+      if (@available(iOS 10, *)) {
+        if ([self.movieFileOutput.availableVideoCodecTypes containsObject:videoCodecType]) {
+          [self.movieFileOutput setOutputSettings:@{AVVideoCodecKey:videoCodecType} forConnection:connection];
+          self.videoCodecType = videoCodecType;
+        } else {
+          RCTLogWarn(@"%s: Video Codec '%@' is not supported on this device.", __func__, videoCodecType);
+        }
+      } else {
+        RCTLogWarn(@"%s: Setting videoCodec is only supported above iOS version 10.", __func__);
+      }
+    }
+
+    dispatch_async(self.sessionQueue, ^{
+        [self updateFlashMode];
+        NSString *path = [RNFileSystem generatePathInDirectory:[[RNFileSystem cacheDirectoryPath] stringByAppendingPathComponent:@"Camera"] withExtension:@".mov"];
+        NSURL *outputURL = [[NSURL alloc] initFileURLWithPath:path];
+        [self.movieFileOutput startRecordingToOutputFileURL:outputURL recordingDelegate:self];
+        self.videoRecordedResolve = resolve;
+        self.videoRecordedReject = reject;
+    });
+}
+
+
+
+
+- (void)updateSessionAudioIsMuted:(BOOL)isMuted
+{
+    dispatch_async(self.sessionQueue, ^{
+        [self.session beginConfiguration];
+
+        for (AVCaptureDeviceInput* input in [self.session inputs]) {
+            if ([input.device hasMediaType:AVMediaTypeAudio]) {
+                [self.session removeInput:input];
+            }
+        }
+
+        if (!isMuted) {
+            NSError *error = nil;
+            AVCaptureDevice *audioCaptureDevice;
+
+            if (self.audioSource == RNCameraAudioSourceDefault) {
+                audioCaptureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+            } else if (self.audioSource == RNCameraAudioSourceMic) {
+                audioCaptureDevice = [AVCaptureDevice defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInMicrophone
+                                                      mediaType:nil
+                                                      position:AVCaptureDevicePositionUnspecified];
+            } else if (self.audioSource == RNCameraAudioSourceBluetooth) {
+                self.session.usesApplicationAudioSession = true;
+                self.session.automaticallyConfiguresApplicationAudioSession = false;
+                AVAudioSession *audioSession = [AVAudioSession sharedInstance];
+                [audioSession setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionAllowBluetooth error:nil];
+
+                for(AVAudioSessionPortDescription* portDescription in audioSession.availableInputs) {
+                    if (portDescription.portType == AVAudioSessionPortBluetoothHFP) {
+                        [audioSession setPreferredInput:portDescription error:nil];
+                    }
+                }
+
+                [[AVAudioSession sharedInstance] setActive:YES error:nil];
+                audioCaptureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+            }
+
+            AVCaptureDeviceInput *audioDeviceInput = [AVCaptureDeviceInput deviceInputWithDevice:audioCaptureDevice error:&error];
+
+            if (error || audioDeviceInput == nil) {
+                RCTLogWarn(@"%s: %@", __func__, error);
+                return;
+            }
+
+            if ([self.session canAddInput:audioDeviceInput]) {
+                [self.session addInput:audioDeviceInput];
+            }
+        }
+
+        [self.session commitConfiguration];
+    });
+}
+
+- (void)bridgeDidForeground:(NSNotification *)notification
+{
+
+    if (![self.session isRunning] && [self isSessionPaused]) {
+        self.paused = NO;
+        dispatch_async( self.sessionQueue, ^{
+            [self.session startRunning];
+        });
+    }
+}
+
+- (void)bridgeDidBackground:(NSNotification *)notification
+{
+    if ([self.session isRunning] && ![self isSessionPaused]) {
+        self.paused = YES;
+        dispatch_async( self.sessionQueue, ^{
+            [self.session stopRunning];
+        });
+    }
+    if (self.exportSessionProgressBarTimer != nil) {
+        [self.exportSessionProgressBarTimer invalidate];
+    }
+}
+
 - (void)orientationChanged:(NSNotification *)notification
 {
     UIInterfaceOrientation orientation = [[UIApplication sharedApplication] statusBarOrientation];
@@ -2127,5 +2337,245 @@ BOOL _sessionInterrupted = NO;
     return self.movieFileOutput != nil ? self.movieFileOutput.isRecording : NO;
 }
 
-@end
+- (void)exportVideo
+{
+    AVVideoCodecType videoCodec = self.videoCodecType;
+    if (videoCodec == nil) {
+        videoCodec = [self.movieFileOutput.availableVideoCodecTypes firstObject];
+    }
 
+    if ([self.videoFileURLsToMerge count] == 1) {
+        NSURL *videoURL = [self.videoFileURLsToMerge objectAtIndex:0];
+        self.videoRecordedResolve(@{ @"uri": videoURL.absoluteString, @"codec":videoCodec });
+        [self cleanAfterVideoExport];
+    } else {
+        [self mergeVideoFiles:self.videoFileURLsToMerge completion:^(NSURL *mergedVideoFile, NSError *error) {
+            self.videoRecordedResolve(@{ @"uri": mergedVideoFile.absoluteString, @"codec":videoCodec });
+            [self cleanAfterVideoExport];
+        }];
+    }
+}
+
+- (void)cleanAfterVideoExport
+{
+    self.videoRecordedResolve = nil;
+    [self.videoFileURLsToMerge removeAllObjects];
+    self.videoCodecType = nil;
+}
+
+# pragma mark - Face detector
+
+- (id)createFaceDetectorManager
+{
+    Class faceDetectorManagerClass = NSClassFromString(@"RNFaceDetectorManager");
+    Class faceDetectorManagerStubClass = NSClassFromString(@"RNFaceDetectorManagerStub");
+
+#if __has_include(<GoogleMobileVision/GoogleMobileVision.h>)
+    if (faceDetectorManagerClass) {
+        return [[faceDetectorManagerClass alloc] initWithSessionQueue:_sessionQueue delegate:self];
+    } else if (faceDetectorManagerStubClass) {
+        return [[faceDetectorManagerStubClass alloc] init];
+    }
+#endif
+
+    return nil;
+}
+
+- (void)onFacesDetected:(NSArray<NSDictionary *> *)faces
+{
+    if (_onFacesDetected) {
+        _onFacesDetected(@{
+                           @"type": @"face",
+                           @"faces": faces
+                           });
+    }
+}
+
+- (void)updateExportDisplay {
+    NSDictionary *event = @{@"progress" : [NSNumber numberWithFloat:self.exportSession.progress]};
+    [self onVideoMergeProgUpdated:event];
+    if (self.exportSession.progress > .99) {
+        [self.exportSessionProgressBarTimer invalidate];
+    }
+}
+
+- (UIInterfaceOrientation)getFinalOrientation:(NSArray *)fileURLs {
+    __block UIInterfaceOrientation orientation = UIInterfaceOrientationLandscapeLeft;
+
+    [fileURLs enumerateObjectsUsingBlock:^(NSURL *fileURL, NSUInteger idx, BOOL *stop) {
+        #pragma unused(idx)
+
+        AVURLAsset *sourceAsset = [AVURLAsset URLAssetWithURL:fileURL options:nil];
+        AVAssetTrack *videoAsset = [[sourceAsset tracksWithMediaType:AVMediaTypeVideo] firstObject];
+
+        CGAffineTransform t_ = videoAsset.preferredTransform;
+
+        if ((t_.a == 0 && t_.b == 1.0 && t_.c == -1.0 && t_.d == 0) ||
+            (t_.a == 0 && t_.b == -1.0 && t_.c == 1.0 && t_.d == 0))
+        {
+            orientation = UIInterfaceOrientationPortrait;
+        }
+    }];
+
+    return orientation;
+}
+
+- (void)mergeVideoFiles:(NSArray *)fileURLs
+             completion:(void(^)(NSURL *mergedVideoFile, NSError *error))completion {
+
+    NSLog(@"Started merging %lu video files ...", (unsigned long)fileURLs.count);
+
+    AVMutableComposition *composition = [[AVMutableComposition alloc] init];
+    AVMutableCompositionTrack *videoTrack = [composition addMutableTrackWithMediaType:AVMediaTypeVideo preferredTrackID:kCMPersistentTrackID_Invalid];
+    AVMutableCompositionTrack *audioTrack = [composition addMutableTrackWithMediaType:AVMediaTypeAudio preferredTrackID:kCMPersistentTrackID_Invalid];
+    NSMutableArray *instructions = [NSMutableArray new];
+
+    __block BOOL errorOccurred = NO;
+    __block CMTime currentTime = kCMTimeZero;
+    __block CGSize size = CGSizeZero;
+    __block int32_t highestFrameRate = 0;
+
+    [fileURLs enumerateObjectsUsingBlock:^(NSURL *fileURL, NSUInteger idx, BOOL *stop) {
+        #pragma unused(idx)
+
+        AVURLAsset *sourceAsset = [AVURLAsset URLAssetWithURL:fileURL options:nil];
+        AVAssetTrack *videoAsset = [[sourceAsset tracksWithMediaType:AVMediaTypeVideo] firstObject];
+        AVAssetTrack *audioAsset = [[sourceAsset tracksWithMediaType:AVMediaTypeAudio] firstObject];
+        UIInterfaceOrientation finalOrientation = [self getFinalOrientation:fileURLs];
+
+        size = videoAsset.naturalSize;
+        if ((videoAsset.naturalSize.width > videoAsset.naturalSize.height && finalOrientation == UIInterfaceOrientationPortrait) ||
+            (videoAsset.naturalSize.width < videoAsset.naturalSize.height && finalOrientation == UIInterfaceOrientationLandscapeLeft)) {
+            size = CGSizeMake(videoAsset.naturalSize.height, videoAsset.naturalSize.width);
+        }
+
+        int32_t currentFrameRate = (int)roundf(videoAsset.nominalFrameRate);
+        highestFrameRate = (currentFrameRate > highestFrameRate) ? currentFrameRate : highestFrameRate;
+
+        NSLog(@"* %@ (%dfps)", [fileURL lastPathComponent], currentFrameRate);
+
+        // According to Apple placing multiple video segments on the same composition track can potentially lead to dropping frames
+        // at the transitions between video segments. Therefore we trim the first and last frame of each video.
+        // https://developer.apple.com/library/ios/documentation/AudioVideo/Conceptual/AVFoundationPG/Articles/03_Editing.html
+        CMTime trimmingTime = CMTimeMake(lround(videoAsset.naturalTimeScale / videoAsset.nominalFrameRate), videoAsset.naturalTimeScale);
+        CMTimeRange timeRange = CMTimeRangeMake(trimmingTime, CMTimeSubtract(videoAsset.timeRange.duration, trimmingTime));
+
+        NSError *videoError;
+        BOOL videoResult = [videoTrack insertTimeRange:timeRange ofTrack:videoAsset atTime:currentTime error:&videoError];
+
+        NSError *audioError;
+        BOOL audioResult = [audioTrack insertTimeRange:timeRange ofTrack:audioAsset atTime:currentTime error:&audioError];
+
+        if(!videoResult || !audioResult || videoError || audioError) {
+            if (completion) completion(nil, videoError? : audioError);
+            errorOccurred = YES;
+            *stop = YES;
+        } else {
+            AVMutableVideoCompositionInstruction *videoCompositionInstruction = [AVMutableVideoCompositionInstruction videoCompositionInstruction];
+            AVMutableVideoCompositionLayerInstruction *layerInstruction = [AVMutableVideoCompositionLayerInstruction videoCompositionLayerInstructionWithAssetTrack:videoTrack];
+
+            UIInterfaceOrientation orientation;
+            CGAffineTransform t_ = videoAsset.preferredTransform;
+
+            if (t_.a == 0 && t_.b == 1.0 && t_.c == -1.0 && t_.d == 0) {
+                orientation = UIInterfaceOrientationPortrait;
+            }
+            else if (t_.a == 0 && t_.b == -1.0 && t_.c == 1.0 && t_.d == 0) {
+                orientation = UIInterfaceOrientationPortraitUpsideDown;
+            }
+            else if (t_.a == -1 && t_.b == 0 && t_.c == 0 && t_.d == -1) {
+                orientation = UIInterfaceOrientationLandscapeRight;
+            }
+            else if (t_.a == 1 && t_.b == 0 && t_.c == 0 && t_.d == 1) {
+                orientation = UIInterfaceOrientationLandscapeLeft;
+            }
+
+            if (orientation == UIInterfaceOrientationPortrait) {
+                [layerInstruction setTransform:CGAffineTransformRotate(CGAffineTransformMakeTranslation(videoAsset.naturalSize.height, 0.0), DEGREES_RADIANS(90.0))
+                                        atTime:kCMTimeZero];
+            }
+            else if (orientation == UIInterfaceOrientationLandscapeRight) {
+                if (finalOrientation == UIInterfaceOrientationPortrait) {
+                    CGAffineTransform finalTransform = CGAffineTransformConcat(CGAffineTransformRotate(CGAffineTransformMakeTranslation(videoAsset.naturalSize.width, videoAsset.naturalSize.height * 2), DEGREES_RADIANS(180.0)),
+                                                                               CGAffineTransformMakeScale(size.width / size.height, size.width / size.height));
+                    [layerInstruction setTransform:finalTransform atTime:kCMTimeZero];
+                } else {
+                    [layerInstruction setTransform:CGAffineTransformRotate(CGAffineTransformMakeTranslation(videoAsset.naturalSize.width, videoAsset.naturalSize.height), DEGREES_RADIANS(180.0))
+                                            atTime:kCMTimeZero];
+                }
+            }
+            else if (orientation == UIInterfaceOrientationLandscapeLeft) {
+                if (finalOrientation == UIInterfaceOrientationPortrait) {
+                    CGAffineTransform finalTransform = CGAffineTransformConcat(CGAffineTransformMakeTranslation(0.0, videoAsset.naturalSize.height),
+                                                                               CGAffineTransformMakeScale(size.width / size.height, size.width / size.height));
+                    [layerInstruction setTransform:finalTransform atTime:kCMTimeZero];
+                }
+            }
+
+            videoCompositionInstruction.timeRange = CMTimeRangeMake(currentTime, timeRange.duration);
+            videoCompositionInstruction.layerInstructions = @[layerInstruction];
+            [instructions addObject:videoCompositionInstruction];
+
+            currentTime = CMTimeAdd(currentTime, timeRange.duration);
+        }
+    }];
+
+    if (errorOccurred == NO) {
+        AVMutableVideoComposition *mutableVideoComposition = [AVMutableVideoComposition videoComposition];
+        mutableVideoComposition.instructions = instructions;
+        mutableVideoComposition.frameDuration = CMTimeMake(1, highestFrameRate);
+        mutableVideoComposition.renderSize = size;
+
+        NSString *filePath = [RNFileSystem generatePathInDirectory:[[RNFileSystem cacheDirectoryPath] stringByAppendingPathComponent:@"Camera"] withExtension:@".mov"];
+        self.exportSession = [[AVAssetExportSession alloc] initWithAsset:composition presetName:AVAssetExportPresetHighestQuality];
+        self.exportSession.outputURL = [NSURL fileURLWithPath:filePath];
+        self.exportSession.outputFileType = AVFileTypeMPEG4;
+        self.exportSession.shouldOptimizeForNetworkUse = YES;
+        self.exportSession.videoComposition = mutableVideoComposition;
+
+        void(^exportCompletion)(void) = ^{
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(self.exportSession.outputURL, self.exportSession.error);
+            });
+        };
+
+        self.exportSessionProgressBarTimer = [NSTimer scheduledTimerWithTimeInterval:.5 target:self selector:@selector(updateExportDisplay) userInfo:nil repeats:YES];
+
+        [self.exportSession exportAsynchronouslyWithCompletionHandler:^{
+            switch (self.exportSession.status) {
+                case AVAssetExportSessionStatusFailed:{
+                    NSLog(@"Export Status: Failed");
+                    [self.exportSessionProgressBarTimer invalidate];
+                    self.videoRecordedResolve(@{ @"uri": [NSString string], @"codec": [NSString string] });
+                    [self cleanAfterVideoExport];
+                    break;
+                }
+                case AVAssetExportSessionStatusCancelled:{
+                    NSLog(@"Export Status: Cancelled");
+                    [self.exportSessionProgressBarTimer invalidate];
+                    self.videoRecordedResolve(@{ @"uri": [NSString string], @"codec": [NSString string] });
+                    [self cleanAfterVideoExport];
+                    break;
+                }
+                case AVAssetExportSessionStatusCompleted: {
+                    NSLog(@"Successfully merged video files into: %@", filePath);
+                    exportCompletion();
+                    NSDictionary *event = @{@"progress" : [NSNumber numberWithFloat:1.0]};
+                    [self onVideoMergeProgUpdated:event];
+                    break;
+                }
+                case AVAssetExportSessionStatusUnknown: {
+                    NSLog(@"Export Status: Unknown");
+                }
+                case AVAssetExportSessionStatusExporting : {
+                    NSLog(@"Export Status: Exporting");
+                }
+                case AVAssetExportSessionStatusWaiting: {
+                    NSLog(@"Export Status: Waiting");
+                }
+            };
+        }];
+    }
+}
+
+@end
