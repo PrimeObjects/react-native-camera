@@ -90,6 +90,7 @@ public class CameraModule extends ReactContextBaseJavaModule {
         put("AutoFocus", getAutoFocusConstants());
         put("WhiteBalance", getWhiteBalanceConstants());
         put("VideoQuality", getVideoQualityConstants());
+        put("AudioSource", getAudioSourceConstants());
         put("BarCodeType", getBarCodeConstants());
         put("FaceDetection", Collections.unmodifiableMap(new HashMap<String, Object>() {
           {
@@ -192,6 +193,17 @@ public class CameraModule extends ReactContextBaseJavaModule {
             put("720p", VIDEO_720P);
             put("480p", VIDEO_480P);
             put("4:3", VIDEO_4x3);
+          }
+        });
+      }
+
+  
+      private Map<String, Object> getAudioSourceConstants() {
+        return Collections.unmodifiableMap(new HashMap<String, Object>() {
+          {
+            put("default", Constants.AUDIOSOURCE_DEFAULT);
+            put("mic", Constants.AUDIOSOURCE_MIC);
+            put("bluetooth", Constants.AUDIOSOURCE_BLUETOOTH);
           }
         });
       }
@@ -422,4 +434,47 @@ public class CameraModule extends ReactContextBaseJavaModule {
       }
       promise.resolve(false);
   }
+
+ @ReactMethod
+  public void pauseRecording(final int viewTag) {
+      final ReactApplicationContext context = getReactApplicationContext();
+      UIManagerModule uiManager = context.getNativeModule(UIManagerModule.class);
+      uiManager.addUIBlock(new UIBlock() {
+          @Override
+          public void execute(NativeViewHierarchyManager nativeViewHierarchyManager) {
+              final RNCameraView cameraView;
+
+              try {
+                  cameraView = (RNCameraView) nativeViewHierarchyManager.resolveView(viewTag);
+                  if (cameraView.isCameraOpened()) {
+                      cameraView.pauseRecording();
+                  }
+              } catch (Exception e) {
+                  e.printStackTrace();
+              }
+          }
+      });
+  }
+
+  @ReactMethod
+  public void resumeRecording(final int viewTag) {
+      final ReactApplicationContext context = getReactApplicationContext();
+      UIManagerModule uiManager = context.getNativeModule(UIManagerModule.class);
+      uiManager.addUIBlock(new UIBlock() {
+          @Override
+          public void execute(NativeViewHierarchyManager nativeViewHierarchyManager) {
+              final RNCameraView cameraView;
+
+              try {
+                  cameraView = (RNCameraView) nativeViewHierarchyManager.resolveView(viewTag);
+                  if (cameraView.isCameraOpened()) {
+                      cameraView.resumeRecording();
+                  }
+              } catch (Exception e) {
+                  e.printStackTrace();
+              }
+          }
+      });
+  }
+
 }

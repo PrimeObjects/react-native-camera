@@ -22,6 +22,7 @@ import android.graphics.Rect;
 import android.hardware.Camera;
 import android.media.CamcorderProfile;
 import android.os.Build;
+
 import android.os.HandlerThread;
 import android.os.Handler;
 import android.os.Parcel;
@@ -96,7 +97,6 @@ public class CameraView extends FrameLayout {
     protected HandlerThread mBgThread;
     protected Handler mBgHandler;
 
-
     public CameraView(Context context, boolean fallbackToOldApi) {
         this(context, null, fallbackToOldApi);
     }
@@ -113,8 +113,6 @@ public class CameraView extends FrameLayout {
         mBgThread = new HandlerThread("RNCamera-Handler-Thread");
         mBgThread.start();
         mBgHandler = new Handler(mBgThread.getLooper());
-
-
         if (isInEditMode()){
             mCallbacks = null;
             mDisplayOrientationDetector = null;
@@ -257,6 +255,7 @@ public class CameraView extends FrameLayout {
         state.zoom = getZoom();
         state.whiteBalance = getWhiteBalance();
         state.scanning = getScanning();
+        state.audioSource = getAudioSource();
         state.pictureSize = getPictureSize();
         return state;
     }
@@ -279,6 +278,7 @@ public class CameraView extends FrameLayout {
         setZoom(ss.zoom);
         setWhiteBalance(ss.whiteBalance);
         setScanning(ss.scanning);
+        setAudioSource(ss.audioSource);
         setPictureSize(ss.pictureSize);
     }
 
@@ -415,7 +415,6 @@ public class CameraView extends FrameLayout {
         //noinspection WrongConstant
         return mImpl.getFacing();
     }
-
      /**
      * Chooses camera by its camera iD
      *
@@ -433,7 +432,6 @@ public class CameraView extends FrameLayout {
     public String getCameraId() {
       return mImpl.getCameraId();
     }
-
     /**
      * Gets all the aspect ratios supported by the current camera.
      */
@@ -447,7 +445,6 @@ public class CameraView extends FrameLayout {
     public List<Properties> getCameraIds() {
         return mImpl.getCameraIds();
     }
-
     /**
      * Sets the aspect ratio of camera.
      *
@@ -577,6 +574,14 @@ public class CameraView extends FrameLayout {
       return mImpl.getZoom();
     }
 
+    public void setAudioSource(int audioSource) {
+      mImpl.setAudioSource(audioSource);
+    }
+
+    public int getAudioSource() {
+      return mImpl.getAudioSource();
+    }
+
     public void setWhiteBalance(int whiteBalance) {
       mImpl.setWhiteBalance(whiteBalance);
     }
@@ -608,6 +613,14 @@ public class CameraView extends FrameLayout {
     public boolean record(String path, int maxDuration, int maxFileSize,
                           boolean recordAudio, CamcorderProfile profile, int orientation) {
         return mImpl.record(path, maxDuration, maxFileSize, recordAudio, profile, orientation);
+    }
+
+    public void pauseRecording() {
+        mImpl.pauseRecording();
+    }
+
+    public void resumeRecording() {
+        mImpl.resumeRecording();
     }
 
     public void stopRecording() {
@@ -717,6 +730,8 @@ public class CameraView extends FrameLayout {
         float focusDepth;
 
         float zoom;
+
+        int audioSource;
 
         int whiteBalance;
 

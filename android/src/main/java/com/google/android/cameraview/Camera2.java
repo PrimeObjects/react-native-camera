@@ -33,6 +33,7 @@ import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.MeteringRectangle;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.AudioManager;
 import android.media.CamcorderProfile;
 import android.media.Image;
 import android.media.ImageReader;
@@ -266,8 +267,14 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
 
     private Rect mInitialCropRegion;
 
+    private int mAudioSource;
+
+    private AudioManager mAudioManager;
+
     Camera2(Callback callback, PreviewImpl preview, Context context, Handler bgHandler) {
         super(callback, preview, bgHandler);
+
+        mAudioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         mCameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
         mCameraManager.registerAvailabilityCallback(new CameraManager.AvailabilityCallback() {
             @Override
@@ -454,7 +461,6 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
     Size getPictureSize() {
         return mPictureSize;
     }
-
     @Override
     boolean setAspectRatio(AspectRatio ratio) {
         if (ratio != null && mPreviewSizes.isEmpty()) {
@@ -587,6 +593,16 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
     }
 
     @Override
+    void pauseRecording() {
+        mMediaRecorder.pause();
+    }
+
+    @Override
+    void resumeRecording() {
+        mMediaRecorder.resume();
+    }
+
+    @Override
     void stopRecording() {
         if (mIsRecording) {
             stopMediaRecorder();
@@ -697,11 +713,20 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
     }
 
     @Override
+    void setAudioSource(int audioSource) {
+        mAudioSource = audioSource;
+    }
+
+    @Override
+    int getAudioSource() {
+        return mAudioSource;
+    }
+
+    @Override
     void setDisplayOrientation(int displayOrientation) {
         mDisplayOrientation = displayOrientation;
         mPreview.setDisplayOrientation(mDisplayOrientation);
     }
-
 
     @Override
     void setDeviceOrientation(int deviceOrientation) {
@@ -835,7 +860,6 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
         if (!mPreviewSizes.ratios().contains(mAspectRatio)) {
             mAspectRatio = mPreviewSizes.ratios().iterator().next();
         }
-
         mCameraOrientation = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
     }
 
@@ -915,7 +939,6 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
             e.printStackTrace();
         }
     }
-
     public Surface getPreviewSurface() {
         if (mPreviewSurface != null) {
             return mPreviewSurface;
@@ -1133,8 +1156,7 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
         }
     }
 
-
-    /**
+     /**
      * Auto focus on input coordinates
      */
 
@@ -1215,7 +1237,6 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
 
         return focusAreaTouch;
     }
-
     /**
      * Captures a still picture.
      */
@@ -1257,13 +1278,10 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
                     break;
             }
             captureRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION, getOutputRotation());
-
-
             if(mCaptureCallback.getOptions().hasKey("quality")){
                 int quality = (int) (mCaptureCallback.getOptions().getDouble("quality") * 100);
                 captureRequestBuilder.set(CaptureRequest.JPEG_QUALITY, (byte)quality);
             }
-
             captureRequestBuilder.set(CaptureRequest.SCALER_CROP_REGION, mPreviewRequestBuilder.get(CaptureRequest.SCALER_CROP_REGION));
             // Stop preview and capture a still picture.
             mCaptureSession.stopRepeating();
@@ -1312,8 +1330,16 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
         mMediaRecorder = new MediaRecorder();
 
         mMediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
+
         if (recordAudio) {
-            mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            if (mAudioSource == Constants.AUDIOSOURCE_DEFAULT) {
+                mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.CAMCORDER);
+            } else if (mAudioSource == Constants.AUDIOSOURCE_MIC) {
+                mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            } else if (mAudioSource == Constants.AUDIOSOURCE_BLUETOOTH) {
+                mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+                mAudioManager.startBluetoothSco();
+            }
         }
 
         mMediaRecorder.setOutputFile(path);
@@ -1323,6 +1349,7 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
         if (!CamcorderProfile.hasProfile(Integer.parseInt(mCameraId), profile.quality)) {
             camProfile = CamcorderProfile.get(CamcorderProfile.QUALITY_HIGH);
         }
+
         camProfile.videoBitRate = profile.videoBitRate;
         setCamcorderProfile(camProfile, recordAudio);
 
@@ -1354,6 +1381,10 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
     }
 
     private void stopMediaRecorder() {
+        if (mAudioSource == Constants.AUDIOSOURCE_BLUETOOTH) {
+            mAudioManager.stopBluetoothSco();
+        }
+
         mIsRecording = false;
         try {
             mCaptureSession.stopRepeating();
