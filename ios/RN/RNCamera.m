@@ -1207,6 +1207,15 @@ BOOL _sessionInterrupted = NO;
 
 - (void)stopRecording
 {
+    if (self.recordingState == RNRecordingStatePaused) {
+        [self exportVideo];
+        [self setRecordingState:RNRecordingStateStopped];
+        return;
+    }
+
+    [self setRecordingState:RNRecordingStateStopped];
+   
+
     dispatch_async(self.sessionQueue, ^{
         if ([self.movieFileOutput isRecording]) {
             [self.movieFileOutput stopRecording];
@@ -1931,42 +1940,69 @@ BOOL _sessionInterrupted = NO;
         }
     }
     if (success && self.videoRecordedResolve != nil) {
-        NSMutableDictionary *result = [[NSMutableDictionary alloc] init];
-
-        void (^resolveBlock)(void) = ^() {
-            self.videoRecordedResolve(result);
-        };
-
-        result[@"uri"] = outputFileURL.absoluteString;
-        result[@"videoOrientation"] = @([self.orientation integerValue]);
-        result[@"deviceOrientation"] = @([self.deviceOrientation integerValue]);
-        result[@"isRecordingInterrupted"] = @(self.isRecordingInterrupted);
-
-
-        if (@available(iOS 10, *)) {
-            AVVideoCodecType videoCodec = self.videoCodecType;
-            if (videoCodec == nil) {
-                videoCodec = [self.movieFileOutput.availableVideoCodecTypes firstObject];
-            }
-            result[@"codec"] = videoCodec;
-
-            if ([connections[0] isVideoMirrored]) {
-                [self mirrorVideo:outputFileURL completion:^(NSURL *mirroredURL) {
-                    result[@"uri"] = mirroredURL.absoluteString;
-                    resolveBlock();
-                }];
-                return;
-            }
+       
+        [self.videoFileURLsToMerge addObject:outputFileURL];
+        if (self.recordingState == RNRecordingStateStopped) {
+            [self exportVideo];
         }
 
-        resolveBlock();
+        // NSMutableDictionary *result = [[NSMutableDictionary alloc] init];
+        // void (^resolveBlock)(void) = ^() {
+        //     self.videoRecordedResolve(result);
+        // };
+
+        // result[@"uri"] = outputFileURL.absoluteString;
+        // result[@"videoOrientation"] = @([self.orientation integerValue]);
+        // result[@"deviceOrientation"] = @([self.deviceOrientation integerValue]);
+        // result[@"isRecordingInterrupted"] = @(self.isRecordingInterrupted);
+
+
+        // if (@available(iOS 10, *)) {
+        //     AVVideoCodecType videoCodec = self.videoCodecType;
+        //     if (videoCodec == nil) {
+        //         videoCodec = [self.movieFileOutput.availableVideoCodecTypes firstObject];
+        //     }
+        //     result[@"codec"] = videoCodec;
+
+        //     if ([connections[0] isVideoMirrored]) {
+        //         [self mirrorVideo:outputFileURL completion:^(NSURL *mirroredURL) {
+        //             result[@"uri"] = mirroredURL.absoluteString;
+        //             resolveBlock();
+        //         }];
+        //         return;
+        //     }
+        // }
+
+        // resolveBlock();
     } else if (self.videoRecordedReject != nil) {
         self.videoRecordedReject(@"E_RECORDING_FAILED", @"An error occurred while recording a video.", error);
     }
 
+    self.videoRecordedReject = nil;
     [self cleanupCamera];
 
 }
+
+
+- (void)exportVideo
+{
+    AVVideoCodecType videoCodec = self.videoCodecType;
+    if (videoCodec == nil) {
+        videoCodec = [self.movieFileOutput.availableVideoCodecTypes firstObject];
+    }
+
+    if ([self.videoFileURLsToMerge count] == 1) {
+        NSURL *videoURL = [self.videoFileURLsToMerge objectAtIndex:0];
+        self.videoRecordedResolve(@{ @"uri": videoURL.absoluteString, @"codec":videoCodec });
+        [self cleanAfterVideoExport];
+    } else {
+        [self mergeVideoFiles:self.videoFileURLsToMerge completion:^(NSURL *mergedVideoFile, NSError *error) {
+            self.videoRecordedResolve(@{ @"uri": mergedVideoFile.absoluteString, @"codec":videoCodec });
+            [self cleanAfterVideoExport];
+        }];
+    }
+}
+
 
 - (void)cleanupCamera {
     self.videoRecordedResolve = nil;
@@ -2282,24 +2318,6 @@ BOOL _sessionInterrupted = NO;
     return self.movieFileOutput != nil ? self.movieFileOutput.isRecording : NO;
 }
 
-- (void)exportVideo
-{
-    AVVideoCodecType videoCodec = self.videoCodecType;
-    if (videoCodec == nil) {
-        videoCodec = [self.movieFileOutput.availableVideoCodecTypes firstObject];
-    }
-
-    if ([self.videoFileURLsToMerge count] == 1) {
-        NSURL *videoURL = [self.videoFileURLsToMerge objectAtIndex:0];
-        self.videoRecordedResolve(@{ @"uri": videoURL.absoluteString, @"codec":videoCodec });
-        [self cleanAfterVideoExport];
-    } else {
-        [self mergeVideoFiles:self.videoFileURLsToMerge completion:^(NSURL *mergedVideoFile, NSError *error) {
-            self.videoRecordedResolve(@{ @"uri": mergedVideoFile.absoluteString, @"codec":videoCodec });
-            [self cleanAfterVideoExport];
-        }];
-    }
-}
 
 - (void)cleanAfterVideoExport
 {
