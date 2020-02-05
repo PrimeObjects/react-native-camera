@@ -78,7 +78,7 @@ RCT_EXPORT_VIEW_PROPERTY(onVideoMergeProgressUpdated, RCTDirectEventBlock);
              @"VideoStabilization": [[self class] validVideoStabilizationModes],
              @"GoogleVisionBarcodeDetection": @{
                  @"BarcodeType": [[self class] barcodeDetectorConstants],
-             }
+             },
              @"AudioSource": @{
                      @"default": @(RNCameraAudioSourceDefault),
                      @"mic": @(RNCameraAudioSourceMic),

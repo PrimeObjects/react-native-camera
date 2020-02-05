@@ -1003,8 +1003,10 @@ BOOL _sessionInterrupted = NO;
         [self record:tmpOptions resolve:resolve reject:reject];
     }];
 }
+
 - (void)record:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
 {
+
     if(self.videoCaptureDeviceInput == nil || !self.session.isRunning){
         reject(@"E_VIDEO_CAPTURE_FAILED", @"Camera is not ready.", nil);
         return;
@@ -1015,6 +1017,18 @@ BOOL _sessionInterrupted = NO;
         return;
     }
 
+
+    if (self.recordingState == RNRecordingStateRecording || self.recordingState == RNRecordingStateResumed) {
+        return;
+    } else if (self.recordingState == RNRecordingStateStopped) {
+        [self setRecordingState:RNRecordingStateRecording];
+        self.videoOptions = options;
+    } else if (self.recordingState == RNRecordingStatePaused) {
+        [self setRecordingState:RNRecordingStateResumed];
+        options = self.videoOptions;
+    }
+
+    
     NSInteger orientation = [options[@"orientation"] integerValue];
 
     // some operations will change our config
@@ -1671,75 +1685,6 @@ BOOL _sessionInterrupted = NO;
 }
 
 
-- (void)record:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
-{
-    if (self.recordingState == RNRecordingStateRecording || self.recordingState == RNRecordingStateResumed) {
-        return;
-    } else if (self.recordingState == RNRecordingStateStopped) {
-        [self setRecordingState:RNRecordingStateRecording];
-        self.videoOptions = options;
-    } else if (self.recordingState == RNRecordingStatePaused) {
-        [self setRecordingState:RNRecordingStateResumed];
-        options = self.videoOptions;
-    }
-
-    if (_movieFileOutput == nil) {
-        // At the time of writing AVCaptureMovieFileOutput and AVCaptureVideoDataOutput (> GMVDataOutput)
-        // cannot coexist on the same AVSession (see: https://stackoverflow.com/a/4986032/1123156).
-        // We stop face detection here and restart it in when AVCaptureMovieFileOutput finishes recording.
-    #if __has_include(<GoogleMobileVision/GoogleMobileVision.h>)
-        [_faceDetectorManager stopFaceDetection];
-    #endif
-        [self setupMovieFileCapture];
-    }
-
-    if (self.movieFileOutput == nil || self.movieFileOutput.isRecording || _videoRecordedResolve != nil || _videoRecordedReject != nil) {
-        [self.session commitConfiguration];
-      return;
-    }
-
-    if (options[@"maxDuration"]) {
-        Float64 maxDuration = [options[@"maxDuration"] floatValue];
-        self.movieFileOutput.maxRecordedDuration = CMTimeMakeWithSeconds(maxDuration, 30);
-    }
-
-    if (options[@"maxFileSize"]) {
-        self.movieFileOutput.maxRecordedFileSize = [options[@"maxFileSize"] integerValue];
-    }
-
-    if (options[@"quality"]) {
-        [self updateSessionPreset:[RNCameraUtils captureSessionPresetForVideoResolution:(RNCameraVideoResolution)[options[@"quality"] integerValue]]];
-    }
-
-    [self updateSessionAudioIsMuted:!!options[@"mute"]];
-
-    AVCaptureConnection *connection = [self.movieFileOutput connectionWithMediaType:AVMediaTypeVideo];
-    [connection setVideoOrientation:[RNCameraUtils videoOrientationForInterfaceOrientation:[[UIApplication sharedApplication] statusBarOrientation]]];
-
-    if (options[@"codec"]) {
-      AVVideoCodecType videoCodecType = options[@"codec"];
-      if (@available(iOS 10, *)) {
-        if ([self.movieFileOutput.availableVideoCodecTypes containsObject:videoCodecType]) {
-          [self.movieFileOutput setOutputSettings:@{AVVideoCodecKey:videoCodecType} forConnection:connection];
-          self.videoCodecType = videoCodecType;
-        } else {
-          RCTLogWarn(@"%s: Video Codec '%@' is not supported on this device.", __func__, videoCodecType);
-        }
-      } else {
-        RCTLogWarn(@"%s: Setting videoCodec is only supported above iOS version 10.", __func__);
-      }
-    }
-
-    dispatch_async(self.sessionQueue, ^{
-        [self updateFlashMode];
-        NSString *path = [RNFileSystem generatePathInDirectory:[[RNFileSystem cacheDirectoryPath] stringByAppendingPathComponent:@"Camera"] withExtension:@".mov"];
-        NSURL *outputURL = [[NSURL alloc] initFileURLWithPath:path];
-        [self.movieFileOutput startRecordingToOutputFileURL:outputURL recordingDelegate:self];
-        self.videoRecordedResolve = resolve;
-        self.videoRecordedReject = reject;
-    });
-}
-
 
 
 
@@ -2381,15 +2326,6 @@ BOOL _sessionInterrupted = NO;
     return nil;
 }
 
-- (void)onFacesDetected:(NSArray<NSDictionary *> *)faces
-{
-    if (_onFacesDetected) {
-        _onFacesDetected(@{
-                           @"type": @"face",
-                           @"faces": faces
-                           });
-    }
-}
 
 - (void)updateExportDisplay {
     NSDictionary *event = @{@"progress" : [NSNumber numberWithFloat:self.exportSession.progress]};
