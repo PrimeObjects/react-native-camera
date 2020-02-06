@@ -1291,6 +1291,28 @@ BOOL _sessionInterrupted = NO;
     [[self.previewLayer connection] setEnabled:NO];
 }
 
+- (void)pauseRecording
+{
+    [self setRecordingState:RNRecordingStatePaused];
+    [self.movieFileOutput stopRecording];
+}
+
+- (void)resumeRecording
+{
+    [self record:self.videoOptions resolve:self.videoRecordedResolve reject:self.videoRecordedReject];
+}
+
+- (void)setRecordingState:(enum RNRecordingState)state
+{
+    _recordingState = state;
+}
+
+- (enum RNRecordingState)recordingState
+{
+    return _recordingState;
+}
+
+
 
 - (void)startSession
 {
