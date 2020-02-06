@@ -56,6 +56,7 @@ static NSDictionary *defaultFaceDetectorOptions = nil;
 
 BOOL _recordRequested = NO;
 BOOL _sessionInterrupted = NO;
+BOOL _sessionPausedOnce = NO;
 
 
 - (id)initWithBridge:(RCTBridge *)bridge
@@ -1026,16 +1027,25 @@ BOOL _sessionInterrupted = NO;
     }
 
     //SH START
-    if (self.recordingState == RNRecordingStateRecording || self.recordingState == RNRecordingStateResumed) {
-        return;
-    } else if (self.recordingState == RNRecordingStateStopped) {
-        [self setRecordingState:RNRecordingStateRecording];
-        self.videoOptions = options;
-    } else if (self.recordingState == RNRecordingStatePaused) {
-        [self setRecordingState:RNRecordingStateResumed];
-        options = self.videoOptions;
+    if (_sessionPausedOnce)
+    {
+         if (self.recordingState == RNRecordingStateRecording || self.recordingState == RNRecordingStateResumed) {
+            return;
+        } else 
+        {
+            if (self.recordingState == RNRecordingStateStopped) {
+                [self setRecordingState:RNRecordingStateRecording];
+                self.videoOptions = options;
+            } else if (self.recordingState == RNRecordingStatePaused) {
+                [self setRecordingState:RNRecordingStateResumed];
+                options = self.videoOptions;
+            }
+        }
     }
+
+    _sessionPausedOnce = false;
     //SH END
+
     NSInteger orientation = [options[@"orientation"] integerValue];
 
     // some operations will change our config
@@ -1066,16 +1076,6 @@ BOOL _sessionInterrupted = NO;
       return;
     }
 
-    //SH START
-    if (options[@"maxDuration"]) {
-        Float64 maxDuration = [options[@"maxDuration"] floatValue];
-        self.movieFileOutput.maxRecordedDuration = CMTimeMakeWithSeconds(maxDuration, 30);
-    }
-
-    if (options[@"maxFileSize"]) {
-        self.movieFileOutput.maxRecordedFileSize = [options[@"maxFileSize"] integerValue];
-    }
-    //SH END
 
     // video preset will be cleanedup/restarted once capture is done
     // with a camera cleanup call
@@ -1093,6 +1093,7 @@ BOOL _sessionInterrupted = NO;
     }
 
     AVCaptureConnection *connection = [self.movieFileOutput connectionWithMediaType:AVMediaTypeVideo];
+    
     if (self.videoStabilizationMode != 0) {
         if (connection.isVideoStabilizationSupported == NO) {
             RCTLogWarn(@"%s: Video Stabilization is not supported on this device.", __func__);
@@ -1102,31 +1103,7 @@ BOOL _sessionInterrupted = NO;
     }
     [connection setVideoOrientation:orientation];
 
-    //SH START
-    if (options[@"codec"]) {
-        if (@available(iOS 10, *)) {
-            AVVideoCodecType videoCodecType = options[@"codec"];
-            if ([self.movieFileOutput.availableVideoCodecTypes containsObject:videoCodecType]) {
-                self.videoCodecType = videoCodecType;
-                if(options[@"videoBitrate"]) {
-                    NSString *videoBitrate = options[@"videoBitrate"];
-                    [self.movieFileOutput setOutputSettings:@{
-                      AVVideoCodecKey:videoCodecType,
-                      AVVideoCompressionPropertiesKey:
-                          @{
-                              AVVideoAverageBitRateKey:videoBitrate
-                          }
-                      } forConnection:connection];
-                } else {
-                    [self.movieFileOutput setOutputSettings:@{AVVideoCodecKey:videoCodecType} forConnection:connection];
-                }
-            } else {
-                RCTLogWarn(@"%s: Setting videoCodec is only supported above iOS version 10.", __func__);
-            }
-        }
-    }
-    //SH END
-
+    
 
     BOOL recordAudio = [options valueForKey:@"mute"] == nil || ([options valueForKey:@"mute"] != nil && ![options[@"mute"] boolValue]);
 
@@ -1257,30 +1234,38 @@ BOOL _sessionInterrupted = NO;
 
 - (void)stopRecording
 {
-    //SH START
-    if (self.recordingState == RNRecordingStatePaused) {
-        [self exportVideo];
-        [self setRecordingState:RNRecordingStateStopped];
-        return;
-    }
+    
 
-    [self setRecordingState:RNRecordingStateStopped];
-    [self.movieFileOutput stopRecording];
-    //SH END
     dispatch_async(self.sessionQueue, ^{
-        if ([self.movieFileOutput isRecording]) {
-            [self.movieFileOutput stopRecording];
-        } else {
-            if(_recordRequested){
-                _recordRequested = NO;
+        //SH START
+        if (_sessionPausedOnce)
+        {
+            if (self.recordingState == RNRecordingStatePaused) {
+                [self exportVideo];
             }
-            else{
-                RCTLogWarn(@"Video is not recording.");
+
+            [self setRecordingState:RNRecordingStateStopped];
+            [self.movieFileOutput stopRecording];
+        }
+        //SH END
+        else
+        {
+            if ([self.movieFileOutput isRecording]) {
+                [self.movieFileOutput stopRecording];
+            }
+            else
+            {
+                if(_recordRequested){
+                    _recordRequested = NO;
+                }
+                else{
+                    RCTLogWarn(@"Video is not recording.");
+                }
             }
         }
+        
     });
 }
-
 - (void)resumePreview
 {
     [[self.previewLayer connection] setEnabled:YES];
@@ -1913,9 +1898,12 @@ BOOL _sessionInterrupted = NO;
     if (success && self.videoRecordedResolve != nil) {
 
         //SH START
-        [self.videoFileURLsToMerge addObject:outputFileURL];
-        if (self.recordingState == RNRecordingStateStopped) {
-            [self exportVideo];
+        if (_sessionPausedOnce)
+        {
+            [self.videoFileURLsToMerge addObject:outputFileURL];
+            if (self.recordingState == RNRecordingStateStopped) {
+                [self exportVideo];
+            }
         }
         //SH END
 
