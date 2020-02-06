@@ -44,7 +44,7 @@
 @property (nonatomic, assign) BOOL isExposedOnPoint;
 
 @property (nonatomic, copy) RCTDirectEventBlock onVideoMergeProgressUpdated;
-@property (nonatomic, assign, getter=isSessionPaused) BOOL paused;@end
+@property (nonatomic, assign, getter=isSessionPaused) BOOL paused;
 
 @end
 
