@@ -286,12 +286,12 @@ BOOL _sessionInterrupted = NO;
 {
     [self initializeCaptureSessionInput];
     [self startSession]; // will already check if session is running
-    // dispatch_async(self.sessionQueue, ^{
-    //     [self initializeCaptureSessionInput];
-    //     if (!self.session.isRunning) {
-    //         [self startSession];
-    //     }
-    // });
+    dispatch_async(self.sessionQueue, ^{
+        [self initializeCaptureSessionInput];
+        if (!self.session.isRunning) {
+            [self startSession];
+        }
+    });
 }
 
 
@@ -1149,7 +1149,46 @@ BOOL _sessionInterrupted = NO;
     }
 
     dispatch_async(self.sessionQueue, ^{
+        
+        // session preset might affect this, so we run this code
+        // also in the session queue
+        
+        if (options[@"maxDuration"]) {
+            Float64 maxDuration = [options[@"maxDuration"] floatValue];
+            self.movieFileOutput.maxRecordedDuration = CMTimeMakeWithSeconds(maxDuration, 30);
+        }
 
+        if (options[@"maxFileSize"]) {
+            self.movieFileOutput.maxRecordedFileSize = [options[@"maxFileSize"] integerValue];
+        }
+        
+        if (options[@"codec"]) {
+            if (@available(iOS 10, *)) {
+                AVVideoCodecType videoCodecType = options[@"codec"];
+                if ([self.movieFileOutput.availableVideoCodecTypes containsObject:videoCodecType]) {
+                    self.videoCodecType = videoCodecType;
+                    if(options[@"videoBitrate"]) {
+                        NSString *videoBitrate = options[@"videoBitrate"];
+                        [self.movieFileOutput setOutputSettings:@{
+                          AVVideoCodecKey:videoCodecType,
+                          AVVideoCompressionPropertiesKey:
+                              @{
+                                  AVVideoAverageBitRateKey:videoBitrate
+                              }
+                          } forConnection:connection];
+                    } else {
+                        [self.movieFileOutput setOutputSettings:@{AVVideoCodecKey:videoCodecType} forConnection:connection];
+                    }
+                } else {
+                    RCTLogWarn(@"Video Codec %@ is not available.", videoCodecType);
+                }
+            }
+            else {
+                RCTLogWarn(@"%s: Setting videoCodec is only supported above iOS version 10.", __func__);
+            }
+        }
+
+        
         NSString *path = nil;
         if (options[@"path"]) {
             path = options[@"path"];
@@ -1671,7 +1710,6 @@ BOOL _sessionInterrupted = NO;
     });
 }
 
-
 - (void)pauseRecording
 {
     [self setRecordingState:RNRecordingStatePaused];
@@ -1940,48 +1978,50 @@ BOOL _sessionInterrupted = NO;
         }
     }
     if (success && self.videoRecordedResolve != nil) {
-       
+
         [self.videoFileURLsToMerge addObject:outputFileURL];
         if (self.recordingState == RNRecordingStateStopped) {
             [self exportVideo];
         }
+        
+        NSMutableDictionary *result = [[NSMutableDictionary alloc] init];
 
-        // NSMutableDictionary *result = [[NSMutableDictionary alloc] init];
-        // void (^resolveBlock)(void) = ^() {
-        //     self.videoRecordedResolve(result);
-        // };
+        void (^resolveBlock)(void) = ^() {
+            self.videoRecordedResolve(result);
+        };
 
-        // result[@"uri"] = outputFileURL.absoluteString;
-        // result[@"videoOrientation"] = @([self.orientation integerValue]);
-        // result[@"deviceOrientation"] = @([self.deviceOrientation integerValue]);
-        // result[@"isRecordingInterrupted"] = @(self.isRecordingInterrupted);
+        result[@"uri"] = outputFileURL.absoluteString;
+        result[@"videoOrientation"] = @([self.orientation integerValue]);
+        result[@"deviceOrientation"] = @([self.deviceOrientation integerValue]);
+        result[@"isRecordingInterrupted"] = @(self.isRecordingInterrupted);
 
 
-        // if (@available(iOS 10, *)) {
-        //     AVVideoCodecType videoCodec = self.videoCodecType;
-        //     if (videoCodec == nil) {
-        //         videoCodec = [self.movieFileOutput.availableVideoCodecTypes firstObject];
-        //     }
-        //     result[@"codec"] = videoCodec;
+        if (@available(iOS 10, *)) {
+            AVVideoCodecType videoCodec = self.videoCodecType;
+            if (videoCodec == nil) {
+                videoCodec = [self.movieFileOutput.availableVideoCodecTypes firstObject];
+            }
+            result[@"codec"] = videoCodec;
 
-        //     if ([connections[0] isVideoMirrored]) {
-        //         [self mirrorVideo:outputFileURL completion:^(NSURL *mirroredURL) {
-        //             result[@"uri"] = mirroredURL.absoluteString;
-        //             resolveBlock();
-        //         }];
-        //         return;
-        //     }
-        // }
+            if ([connections[0] isVideoMirrored]) {
+                [self mirrorVideo:outputFileURL completion:^(NSURL *mirroredURL) {
+                    result[@"uri"] = mirroredURL.absoluteString;
+                    resolveBlock();
+                }];
+                return;
+            }
+        }
 
-        // resolveBlock();
+        resolveBlock();
     } else if (self.videoRecordedReject != nil) {
         self.videoRecordedReject(@"E_RECORDING_FAILED", @"An error occurred while recording a video.", error);
     }
 
-    self.videoRecordedReject = nil;
+self.videoRecordedReject = nil;
     [self cleanupCamera];
 
 }
+
 
 
 - (void)exportVideo
