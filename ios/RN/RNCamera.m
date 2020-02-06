@@ -1031,7 +1031,7 @@ BOOL _sessionPausedOnce = NO;
     {
          if (self.recordingState == RNRecordingStateRecording || self.recordingState == RNRecordingStateResumed) {
             return;
-        } else 
+        } else
         {
             if (self.recordingState == RNRecordingStateStopped) {
                 [self setRecordingState:RNRecordingStateRecording];
