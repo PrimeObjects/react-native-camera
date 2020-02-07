@@ -56,7 +56,6 @@ static NSDictionary *defaultFaceDetectorOptions = nil;
 
 BOOL _recordRequested = NO;
 BOOL _sessionInterrupted = NO;
-BOOL _sessionPausedOnce = NO;
 
 
 - (id)initWithBridge:(RCTBridge *)bridge
@@ -289,13 +288,14 @@ BOOL _sessionPausedOnce = NO;
     [self initializeCaptureSessionInput];
     [self startSession]; // will already check if session is running
 
-    //SH
+    //SH START
     dispatch_async(self.sessionQueue, ^{
         [self initializeCaptureSessionInput];
         if (!self.session.isRunning) {
             [self startSession];
         }
     });
+    //SH END
 }
 
 
@@ -1027,23 +1027,17 @@ BOOL _sessionPausedOnce = NO;
     }
 
     //SH START
-    if (_sessionPausedOnce)
-    {
-         if (self.recordingState == RNRecordingStateRecording || self.recordingState == RNRecordingStateResumed) {
-            return;
-        } else
-        {
-            if (self.recordingState == RNRecordingStateStopped) {
-                [self setRecordingState:RNRecordingStateRecording];
-                self.videoOptions = options;
-            } else if (self.recordingState == RNRecordingStatePaused) {
-                [self setRecordingState:RNRecordingStateResumed];
-                options = self.videoOptions;
-            }
-        }
+   
+    if (self.recordingState == RNRecordingStateRecording || self.recordingState == RNRecordingStateResumed) {
+        return;
+    } else if (self.recordingState == RNRecordingStateStopped) {
+        [self setRecordingState:RNRecordingStateRecording];
+        self.videoOptions = options;
+    } else if (self.recordingState == RNRecordingStatePaused) {
+        [self setRecordingState:RNRecordingStateResumed];
+        options = self.videoOptions;
     }
-
-    _sessionPausedOnce = NO;
+   
     //SH END
 
     NSInteger orientation = [options[@"orientation"] integerValue];
@@ -1238,29 +1232,25 @@ BOOL _sessionPausedOnce = NO;
 
     dispatch_async(self.sessionQueue, ^{
         //SH START
-        if (_sessionPausedOnce)
-        {
-            if (self.recordingState == RNRecordingStatePaused) {
-                [self exportVideo];
-            }
-
+        if (self.recordingState == RNRecordingStatePaused) {
+            [self exportVideo];
             [self setRecordingState:RNRecordingStateStopped];
+        return;
+        }
+
+        [self setRecordingState:RNRecordingStateStopped];
+        [self.movieFileOutput stopRecording];
+        //SH END
+        if ([self.movieFileOutput isRecording]) {
             [self.movieFileOutput stopRecording];
         }
-        //SH END
         else
         {
-            if ([self.movieFileOutput isRecording]) {
-                [self.movieFileOutput stopRecording];
+            if(_recordRequested){
+                _recordRequested = NO;
             }
-            else
-            {
-                if(_recordRequested){
-                    _recordRequested = NO;
-                }
-                else{
-                    RCTLogWarn(@"Video is not recording.");
-                }
+            else{
+                RCTLogWarn(@"Video is not recording.");
             }
         }
         
@@ -1276,9 +1266,9 @@ BOOL _sessionPausedOnce = NO;
     [[self.previewLayer connection] setEnabled:NO];
 }
 
+//SH START
 - (void)pauseRecording
 {
-    _sessionPausedOnce = YES;
     [self setRecordingState:RNRecordingStatePaused];
     [self.movieFileOutput stopRecording];
 }
@@ -1287,6 +1277,8 @@ BOOL _sessionPausedOnce = NO;
 {
     [self record:self.videoOptions resolve:self.videoRecordedResolve reject:self.videoRecordedReject];
 }
+
+//SH END
 
 - (void)setRecordingState:(enum RNRecordingState)state
 {
@@ -1899,15 +1891,13 @@ BOOL _sessionPausedOnce = NO;
     if (success && self.videoRecordedResolve != nil) {
 
         //SH START
-        if (_sessionPausedOnce)
-        {
-            [self.videoFileURLsToMerge addObject:outputFileURL];
-            if (self.recordingState == RNRecordingStatePaused) {
-                [self exportVideo];
-                self.videoRecordedReject = nil;
-                return;
-            }
+        
+        [self.videoFileURLsToMerge addObject:outputFileURL];
+        if (self.recordingState == RNRecordingStateStopped) {
+            [self exportVideo];
+            return;
         }
+        
         //SH END
 
         NSMutableDictionary *result = [[NSMutableDictionary alloc] init];
