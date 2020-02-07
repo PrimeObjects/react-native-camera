@@ -1043,7 +1043,7 @@ BOOL _sessionPausedOnce = NO;
         }
     }
 
-    _sessionPausedOnce = false;
+    _sessionPausedOnce = NO;
     //SH END
 
     NSInteger orientation = [options[@"orientation"] integerValue];
@@ -1278,6 +1278,7 @@ BOOL _sessionPausedOnce = NO;
 
 - (void)pauseRecording
 {
+    _sessionPausedOnce = YES;
     [self setRecordingState:RNRecordingStatePaused];
     [self.movieFileOutput stopRecording];
 }
@@ -1901,8 +1902,10 @@ BOOL _sessionPausedOnce = NO;
         if (_sessionPausedOnce)
         {
             [self.videoFileURLsToMerge addObject:outputFileURL];
-            if (self.recordingState == RNRecordingStateStopped) {
+            if (self.recordingState == RNRecordingStatePaused) {
                 [self exportVideo];
+                self.videoRecordedReject = nil;
+                return;
             }
         }
         //SH END
