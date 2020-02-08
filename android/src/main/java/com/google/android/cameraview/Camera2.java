@@ -33,7 +33,6 @@ import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.MeteringRectangle;
 import android.hardware.camera2.params.StreamConfigurationMap;
-import android.media.AudioManager;
 import android.media.CamcorderProfile;
 import android.media.Image;
 import android.media.ImageReader;
@@ -60,6 +59,9 @@ import java.util.SortedSet;
 
 import org.reactnative.camera.utils.ObjectUtils;
 
+//FORK START
+import android.media.AudioManager;
+//FORK END
 
 
 @SuppressWarnings("MissingPermission")
@@ -267,14 +269,18 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
 
     private Rect mInitialCropRegion;
 
+    //FORK START
     private int mAudioSource;
-
     private AudioManager mAudioManager;
+    //FORK END
 
     Camera2(Callback callback, PreviewImpl preview, Context context, Handler bgHandler) {
         super(callback, preview, bgHandler);
 
+        //FORK START
         mAudioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        //FORK END
+
         mCameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
         mCameraManager.registerAvailabilityCallback(new CameraManager.AvailabilityCallback() {
             @Override
@@ -592,6 +598,7 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
         return false;
     }
 
+    //FORK START
     @Override
     void pauseRecording() {
         mMediaRecorder.pause();
@@ -601,6 +608,7 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
     void resumeRecording() {
         mMediaRecorder.resume();
     }
+    //FORK END
 
     @Override
     void stopRecording() {
@@ -712,6 +720,7 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
         return mCameraOrientation;
     }
 
+    //FORK START
     @Override
     void setAudioSource(int audioSource) {
         mAudioSource = audioSource;
@@ -721,6 +730,7 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
     int getAudioSource() {
         return mAudioSource;
     }
+    //FORK END
 
     @Override
     void setDisplayOrientation(int displayOrientation) {
@@ -1332,6 +1342,7 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
         mMediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
 
         if (recordAudio) {
+            //FORK START
             if (mAudioSource == Constants.AUDIOSOURCE_DEFAULT) {
                 mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.CAMCORDER);
             } else if (mAudioSource == Constants.AUDIOSOURCE_MIC) {
@@ -1340,6 +1351,7 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
                 mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
                 mAudioManager.startBluetoothSco();
             }
+            //FORK END
         }
 
         mMediaRecorder.setOutputFile(path);
@@ -1381,10 +1393,11 @@ class Camera2 extends CameraViewImpl implements MediaRecorder.OnInfoListener, Me
     }
 
     private void stopMediaRecorder() {
+        //FORK START
         if (mAudioSource == Constants.AUDIOSOURCE_BLUETOOTH) {
             mAudioManager.stopBluetoothSco();
         }
-
+        //FORK END
         mIsRecording = false;
         try {
             mCaptureSession.stopRepeating();

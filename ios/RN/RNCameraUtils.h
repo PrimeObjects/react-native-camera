@@ -13,7 +13,7 @@
 // Camera utilities
 + (AVCaptureDevice *)deviceWithMediaType:(NSString *)mediaType preferringPosition:(AVCaptureDevicePosition)position;
 
-+ (AVCaptureDevice *)deviceWithCameraId:(NSString *)cameraId;// Enum conversions
++ (AVCaptureDevice *)deviceWithCameraId:(NSString *)cameraId;
 
 // Enum conversions
 + (float)temperatureForWhiteBalance:(RNCameraWhiteBalance)whiteBalance;

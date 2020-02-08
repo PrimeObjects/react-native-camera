@@ -24,7 +24,9 @@ RCT_EXPORT_VIEW_PROPERTY(onPictureSaved, RCTDirectEventBlock);
 RCT_EXPORT_VIEW_PROPERTY(onTextRecognized, RCTDirectEventBlock);
 RCT_EXPORT_VIEW_PROPERTY(onSubjectAreaChanged, RCTDirectEventBlock);
 RCT_EXPORT_VIEW_PROPERTY(videoStabilizationMode, NSInteger);
+//FORK START
 RCT_EXPORT_VIEW_PROPERTY(onVideoMergeProgressUpdated, RCTDirectEventBlock);
+//FORK END
 
 + (BOOL)requiresMainQueueSetup
 {
@@ -79,17 +81,23 @@ RCT_EXPORT_VIEW_PROPERTY(onVideoMergeProgressUpdated, RCTDirectEventBlock);
              @"GoogleVisionBarcodeDetection": @{
                  @"BarcodeType": [[self class] barcodeDetectorConstants],
              },
+             //FORK START
              @"AudioSource": @{
                      @"default": @(RNCameraAudioSourceDefault),
                      @"mic": @(RNCameraAudioSourceMic),
                      @"bluetooth": @(RNCameraAudioSourceBluetooth),
                      },
+             //FORK END
              };
 }
 
 - (NSArray<NSString *> *)supportedEvents
 {
-    return @[@"onCameraReady", @"onMountError", @"onBarCodeRead", @"onFacesDetected", @"onPictureTaken", @"onPictureSaved", @"onTextRecognized", @"onGoogleVisionBarcodesDetected", @"onSubjectAreaChanged", @"onVideoMergeProgressUpdated"];
+    return @[@"onCameraReady", @"onMountError", @"onBarCodeRead", @"onFacesDetected", @"onPictureTaken", @"onPictureSaved", @"onTextRecognized", @"onGoogleVisionBarcodesDetected", @"onSubjectAreaChanged" 
+    //FORK START
+    ,@"onVideoMergeProgressUpdated"
+    //FORK END
+    ];
 }
 
 + (NSDictionary *)validCodecTypes
@@ -372,13 +380,12 @@ RCT_REMAP_METHOD(takePicture,
     }];
 }
 
-
+//FORK START
 RCT_CUSTOM_VIEW_PROPERTY(audioSource, NSInteger, RNCamera)
 {
     [view setAudioSource:[RCTConvert NSInteger:json]];
 }
-
-
+//FORK END
 RCT_REMAP_METHOD(record,
                  withOptions:(NSDictionary *)options
                  reactTag:(nonnull NSNumber *)reactTag
@@ -441,6 +448,7 @@ RCT_REMAP_METHOD(stopRecording, reactTag:(nonnull NSNumber *)reactTag)
     }];
 }
 
+//FORK START
 RCT_REMAP_METHOD(pauseRecording, reactTag1:(nonnull NSNumber *)reactTag1)
 {
     [self.bridge.uiManager addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, RNCamera *> *viewRegistry) {
@@ -464,6 +472,7 @@ RCT_REMAP_METHOD(resumeRecording, reactTag2:(nonnull NSNumber *)reactTag2)
         }
     }];
 }
+//FORK END
 
 RCT_EXPORT_METHOD(checkDeviceAuthorizationStatus:(RCTPromiseResolveBlock)resolve
                   reject:(__unused RCTPromiseRejectBlock)reject) {

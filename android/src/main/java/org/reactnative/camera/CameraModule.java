@@ -90,7 +90,6 @@ public class CameraModule extends ReactContextBaseJavaModule {
         put("AutoFocus", getAutoFocusConstants());
         put("WhiteBalance", getWhiteBalanceConstants());
         put("VideoQuality", getVideoQualityConstants());
-        put("AudioSource", getAudioSourceConstants());
         put("BarCodeType", getBarCodeConstants());
         put("FaceDetection", Collections.unmodifiableMap(new HashMap<String, Object>() {
           {
@@ -141,6 +140,11 @@ public class CameraModule extends ReactContextBaseJavaModule {
               put("landscapeRight", Constants.ORIENTATION_RIGHT);
             }
         }));
+
+        //FORK START
+        put("AudioSource", getAudioSourceConstants());
+        //FORK END
+
       }
 
       private Map<String, Object> getTypeConstants() {
@@ -196,8 +200,8 @@ public class CameraModule extends ReactContextBaseJavaModule {
           }
         });
       }
-
-  
+      
+      //FORK START
       private Map<String, Object> getAudioSourceConstants() {
         return Collections.unmodifiableMap(new HashMap<String, Object>() {
           {
@@ -207,6 +211,7 @@ public class CameraModule extends ReactContextBaseJavaModule {
           }
         });
       }
+      //FORK END
 
       private Map<String, Object> getGoogleVisionBarcodeModeConstants() {
         return Collections.unmodifiableMap(new HashMap<String, Object>() {
@@ -435,7 +440,9 @@ public class CameraModule extends ReactContextBaseJavaModule {
       promise.resolve(false);
   }
 
- @ReactMethod
+  //FORK START
+
+  @ReactMethod
   public void pauseRecording(final int viewTag) {
       final ReactApplicationContext context = getReactApplicationContext();
       UIManagerModule uiManager = context.getNativeModule(UIManagerModule.class);
@@ -477,4 +484,5 @@ public class CameraModule extends ReactContextBaseJavaModule {
       });
   }
 
+  //FORK END
 }

@@ -17,11 +17,9 @@
 package com.google.android.cameraview;
 
 import android.annotation.SuppressLint;
-import android.content.Context;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
-import android.media.AudioManager;
 import android.media.CamcorderProfile;
 import android.media.MediaRecorder;
 import android.os.Build;
@@ -42,6 +40,11 @@ import java.util.SortedSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.reactnative.camera.utils.ObjectUtils;
+
+//FORK START
+import android.content.Context;
+import android.media.AudioManager;
+//FORK END
 
 
 @SuppressWarnings("deprecation")
@@ -129,14 +132,17 @@ class Camera1 extends CameraViewImpl implements MediaRecorder.OnInfoListener,
 
     private SurfaceTexture mPreviewTexture;
 
-    private int mAudioSource;    
-
+    //FORK START
+    private int mAudioSource;   
     private AudioManager mAudioManager;
+    //FORK END
 
     Camera1(Callback callback, PreviewImpl preview, Handler bgHandler) {
         super(callback, preview, bgHandler);
 
+        //FORK START
         mAudioManager = (AudioManager) preview.getView().getContext().getSystemService(Context.AUDIO_SERVICE);
+        //FORK END
 
         preview.setCallback(new PreviewImpl.Callback() {
             @Override
@@ -620,6 +626,7 @@ class Camera1 extends CameraViewImpl implements MediaRecorder.OnInfoListener,
         return mIsScanning;
     }
 
+    //FORK START
     @Override
     void setAudioSource(int audioSource) {
         mAudioSource = audioSource;
@@ -629,6 +636,7 @@ class Camera1 extends CameraViewImpl implements MediaRecorder.OnInfoListener,
     int getAudioSource() {
         return mAudioSource;
     }
+    //FORK END
 
     @Override
     void takePicture(final ReadableMap options) {
@@ -782,6 +790,7 @@ class Camera1 extends CameraViewImpl implements MediaRecorder.OnInfoListener,
         return false;
     }
 
+    //FORK START
     @Override
     void pauseRecording() {
         mMediaRecorder.pause();
@@ -791,6 +800,7 @@ class Camera1 extends CameraViewImpl implements MediaRecorder.OnInfoListener,
     void resumeRecording() {
         mMediaRecorder.resume();
     }
+    //FORK END
 
     @Override
     void stopRecording() {
@@ -1377,7 +1387,6 @@ class Camera1 extends CameraViewImpl implements MediaRecorder.OnInfoListener,
             String currentMode = WB_MODES.get(mWhiteBalance);
             if (modes == null || !modes.contains(currentMode)) {
                 mCameraParameters.setWhiteBalance(Camera.Parameters.WHITE_BALANCE_AUTO);
-                mWhiteBalance = Constants.WB_AUTO;
                 return true;
             }
             return false;
@@ -1411,6 +1420,7 @@ class Camera1 extends CameraViewImpl implements MediaRecorder.OnInfoListener,
 
         mMediaRecorder.setVideoSource(MediaRecorder.VideoSource.CAMERA);
         if (recordAudio) {
+            //FORK START
             if (mAudioSource == Constants.AUDIOSOURCE_DEFAULT) {
                 mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.CAMCORDER);
             } else if (mAudioSource == Constants.AUDIOSOURCE_MIC) {
@@ -1419,6 +1429,7 @@ class Camera1 extends CameraViewImpl implements MediaRecorder.OnInfoListener,
                 mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
                 mAudioManager.startBluetoothSco();
             }
+            //FORK END
         }
 
         mMediaRecorder.setOutputFile(path);
@@ -1449,29 +1460,40 @@ class Camera1 extends CameraViewImpl implements MediaRecorder.OnInfoListener,
 
     private void stopMediaRecorder() {
 
-        if (mAudioSource == Constants.AUDIOSOURCE_BLUETOOTH) {
-            mAudioManager.stopBluetoothSco();
-        }
-        if (mMediaRecorder != null) {
-            try {
-                mMediaRecorder.stop();
-            } catch (RuntimeException ex) {
-                Log.e("CAMERA_1::", "stopMediaRecorder failed", ex);
+        synchronized(this){
+
+            //FORK START
+            if (mAudioSource == Constants.AUDIOSOURCE_BLUETOOTH) {
+                mAudioManager.stopBluetoothSco();
             }
-            mMediaRecorder.reset();
-            mMediaRecorder.release();
-            mMediaRecorder = null;
+            //FORK END
+
+            if (mMediaRecorder != null) {
+                try {
+                    mMediaRecorder.stop();
+                } catch (RuntimeException ex) {
+                    Log.e("CAMERA_1::", "stopMediaRecorder stop failed", ex);
+                }
+
+                try{
+                    mMediaRecorder.reset();
+                    mMediaRecorder.release();
+                } catch (RuntimeException ex) {
+                    Log.e("CAMERA_1::", "stopMediaRecorder reset failed", ex);
+                }
+
+                mMediaRecorder = null;
+            }
+
+            int deviceOrientation = displayOrientationToOrientationEnum(mDeviceOrientation);
+            if (mVideoPath == null || !new File(mVideoPath).exists()) {
+                mCallback.onVideoRecorded(null, mOrientation != Constants.ORIENTATION_AUTO ? mOrientation : deviceOrientation, deviceOrientation);
+                return;
+            }
+
+            mCallback.onVideoRecorded(mVideoPath, mOrientation != Constants.ORIENTATION_AUTO ? mOrientation : deviceOrientation, deviceOrientation);
+            mVideoPath = null;
         }
-
-        int deviceOrientation = displayOrientationToOrientationEnum(mDeviceOrientation);
-        if (mVideoPath == null || !new File(mVideoPath).exists()) {
-            mCallback.onVideoRecorded(null, mOrientation != Constants.ORIENTATION_AUTO ? mOrientation : deviceOrientation, deviceOrientation);
-            return;
-        }
-
-        mCallback.onVideoRecorded(mVideoPath, mOrientation != Constants.ORIENTATION_AUTO ? mOrientation : deviceOrientation, deviceOrientation);
-        mVideoPath = null;
-
     }
 
     private void setCamcorderProfile(CamcorderProfile profile, boolean recordAudio) {

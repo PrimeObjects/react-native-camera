@@ -103,10 +103,6 @@ abstract class CameraViewImpl {
     abstract boolean record(String path, int maxDuration, int maxFileSize,
                             boolean recordAudio, CamcorderProfile profile, int orientation);
 
-    abstract void pauseRecording();
-
-    abstract void resumeRecording();
-
     abstract void stopRecording();
 
     abstract int getCameraOrientation();
@@ -123,10 +119,6 @@ abstract class CameraViewImpl {
     abstract void setZoom(float zoom);
 
     abstract float getZoom();
-
-    abstract void setAudioSource(int audioSource);
-
-    abstract int getAudioSource();
 
     abstract void setWhiteBalance(int whiteBalance);
 
@@ -158,4 +150,10 @@ abstract class CameraViewImpl {
         void onMountError();
     }
 
+    //FORK START
+    abstract void pauseRecording();
+    abstract void resumeRecording();
+    abstract void setAudioSource(int audioSource);
+    abstract int getAudioSource();
+    //FORK END
 }

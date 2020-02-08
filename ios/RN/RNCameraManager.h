@@ -55,6 +55,7 @@ typedef NS_ENUM(NSInteger, RNCameraVideoResolution) {
     RNCameraVideo288p = 4,
 };
 
+//FORK START
 typedef NS_ENUM(NSInteger, RNCameraAudioSource) {
     RNCameraAudioSourceDefault = 0,
     RNCameraAudioSourceMic = 1,
@@ -67,6 +68,7 @@ typedef NS_ENUM(NSInteger, RNRecordingState) {
     RNRecordingStatePaused = 2,
     RNRecordingStateResumed = 3,
 };
+//FORK END
 
 @interface RNCameraManager : RCTViewManager <RCTBridgeModule>
 

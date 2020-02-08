@@ -117,11 +117,6 @@ public class CameraViewManager extends ViewGroupManager<RNCameraView> {
     view.setZoom(zoom);
   }
 
-  @ReactProp(name = "audioSource")
-  public void setAudioSource(RNCameraView view, int audioSource) {
-    view.setAudioSource(audioSource);
-  }
-
   @ReactProp(name = "whiteBalance")
   public void setWhiteBalance(RNCameraView view, int whiteBalance) {
     view.setWhiteBalance(whiteBalance);
@@ -203,4 +198,11 @@ public class CameraViewManager extends ViewGroupManager<RNCameraView> {
   public void setTextRecognizing(RNCameraView view, boolean textRecognizerEnabled) {
     view.setShouldRecognizeText(textRecognizerEnabled);
   }
+
+  //FORK START
+  @ReactProp(name = "audioSource")
+  public void setAudioSource(RNCameraView view, int audioSource) {
+    view.setAudioSource(audioSource);
+  }
+  //FORK END
 }

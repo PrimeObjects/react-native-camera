@@ -276,8 +276,9 @@ type PropsType = typeof View.props & {
   videoStabilizationMode?: number | string,
   pictureSize?: string,
   rectOfInterest: Rect,
+  //FORK START
   audioSource?: number,
-  onVideoMergeProgressUpdated?: Function,
+  //FORK END
 };
 
 type StateType = {
@@ -364,7 +365,9 @@ export default class Camera extends React.Component<PropsType, StateType> {
       portrait: 'portrait',
       portraitUpsideDown: 'portraitUpsideDown',
     },
+    //FORK START
     AudioSource: CameraManager.AudioSource,
+    //FORK END
   };
 
   // Values under keys from this object will be transformed to native options
@@ -379,7 +382,9 @@ export default class Camera extends React.Component<PropsType, StateType> {
     faceDetectionClassifications: (CameraManager.FaceDetection || {}).Classifications,
     googleVisionBarcodeType: (CameraManager.GoogleVisionBarcodeDetection || {}).BarcodeType,
     videoStabilizationMode: CameraManager.VideoStabilization || {},
+    //FORK START
     audioSource: CameraManager.AudioSource,
+    //FORK END
   };
 
   static propTypes = {
@@ -429,8 +434,9 @@ export default class Camera extends React.Component<PropsType, StateType> {
     mirrorVideo: PropTypes.bool,
     rectOfInterest: PropTypes.any,
     defaultVideoQuality: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    //FORK START
     audioSource: PropTypes.number,
-    onVideoMergeProgressUpdated: PropTypes.func,
+    //FORK END
   };
 
   static defaultProps: Object = {
@@ -479,7 +485,9 @@ export default class Camera extends React.Component<PropsType, StateType> {
     pictureSize: 'None',
     videoStabilizationMode: 0,
     mirrorVideo: false,
+    //FORK START
     audioSource: CameraManager.AudioSource.default,
+    //FORK END
   };
 
   _cameraRef: ?Object;
@@ -617,6 +625,7 @@ export default class Camera extends React.Component<PropsType, StateType> {
     CameraManager.resumePreview(this._cameraHandle);
   }
 
+  //FORK START
   pauseRecording() {
     CameraManager.pauseRecording(this._cameraHandle);
   }
@@ -624,6 +633,7 @@ export default class Camera extends React.Component<PropsType, StateType> {
   resumeRecording() {
     CameraManager.resumeRecording(this._cameraHandle);
   }
+  //FORK END
 
   _onMountError = ({ nativeEvent }: EventCallbackArgumentsType) => {
     if (this.props.onMountError) {
@@ -661,12 +671,6 @@ export default class Camera extends React.Component<PropsType, StateType> {
   _onPictureSaved = ({ nativeEvent }: EventCallbackArgumentsType) => {
     if (this.props.onPictureSaved) {
       this.props.onPictureSaved(nativeEvent);
-    }
-  };
-
-  _onVideoMergeProgressUpdated = ({ nativeEvent }: EventCallbackArgumentsType) => {
-    if (this.props.onVideoMergeProgressUpdated) {
-      this.props.onVideoMergeProgressUpdated(nativeEvent);
     }
   };
 
@@ -783,6 +787,7 @@ export default class Camera extends React.Component<PropsType, StateType> {
     );
   }
 
+  //FORK START
   async componentWillMount() {
     const hasVideoAndAudio = this.props.captureAudio;
     const isAuthorized = await requestPermissions(
@@ -793,6 +798,7 @@ export default class Camera extends React.Component<PropsType, StateType> {
     );
     this.setState({ isAuthorized, isAuthorizationChecked: true });
   }
+  //FORK END
 
   getStatus = (): Status => {
     const { isAuthorized, isAuthorizationChecked } = this.state;
@@ -838,7 +844,6 @@ export default class Camera extends React.Component<PropsType, StateType> {
             onTextRecognized={this._onObjectDetected(this.props.onTextRecognized)}
             onPictureSaved={this._onPictureSaved}
             onSubjectAreaChanged={this._onSubjectAreaChanged}
-            onVideoMergeProgressUpdated={this._onVideoMergeProgressUpdated}
           />
           {this.renderChildren()}
         </View>
@@ -909,7 +914,6 @@ const RNCamera = requireNativeComponent('RNCamera', Camera, {
     onMountError: true,
     onSubjectAreaChanged: true,
     renderToHardwareTextureAndroid: true,
-    testID: true,
-    onVideoMergeProgressUpdated: true,
+    testID: true  
   },
 });

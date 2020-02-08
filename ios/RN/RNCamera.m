@@ -9,7 +9,9 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 #import  "RNSensorOrientationChecker.h"
 
+//FORK START
 #define DEGREES_RADIANS(angle) ((angle) / 180.0 * M_PI)
+//FORK END
 
 @interface RNCamera ()
 
@@ -43,19 +45,22 @@
 @property (nonatomic, assign) BOOL isFocusedOnPoint;
 @property (nonatomic, assign) BOOL isExposedOnPoint;
 
+//FORK START
 @property (nonatomic, copy) RCTDirectEventBlock onVideoMergeProgressUpdated;
 @property (nonatomic, assign, getter=isSessionPaused) BOOL paused;
+//FORK END
 
 @end
 
 @implementation RNCamera
 
-@synthesize recordingState = _recordingState;
-
 static NSDictionary *defaultFaceDetectorOptions = nil;
 
+//FORK START
 BOOL _recordRequested = NO;
 BOOL _sessionInterrupted = NO;
+@synthesize recordingState = _recordingState;
+//FORK END
 
 
 - (id)initWithBridge:(RCTBridge *)bridge
@@ -74,24 +79,13 @@ BOOL _sessionInterrupted = NO;
         self.startText = [NSDate date];
         self.startFace = [NSDate date];
         self.startBarcode = [NSDate date];
-        #if !(TARGET_IPHONE_SIMULATOR)
+#if !(TARGET_IPHONE_SIMULATOR)
         self.previewLayer =
         [AVCaptureVideoPreviewLayer layerWithSession:self.session];
         self.previewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
         self.previewLayer.needsDisplayOnBoundsChange = YES;
 #endif
         self.rectOfInterest = CGRectMake(0, 0, 1.0, 1.0);
-        
-        self.paused = NO;
-        self.recordingState = RNRecordingStateStopped;
-        [self changePreviewOrientation:[UIApplication sharedApplication].statusBarOrientation];
-        [self initializeCaptureSessionInput];
-        [self startSession];
-        self.videoFileURLsToMerge = [[NSMutableArray alloc] init];
-        [[NSNotificationCenter defaultCenter] addObserver:self
-                                                 selector:@selector(orientationChanged:)
-                                                     name:UIDeviceOrientationDidChangeNotification
-                                                   object:nil];
         self.autoFocus = -1;
         self.exposure = -1;
         self.presetCamera = AVCaptureDevicePositionUnspecified;
@@ -107,6 +101,18 @@ BOOL _sessionInterrupted = NO;
         // might create multiple instances of it.
         // and we need to also add/remove event listeners.
 
+        //FORK START
+        self.paused = NO;
+        self.recordingState = RNRecordingStateStopped;
+        [self changePreviewOrientation:[UIApplication sharedApplication].statusBarOrientation];
+        [self initializeCaptureSessionInput];
+        [self startSession];
+        self.videoFileURLsToMerge = [[NSMutableArray alloc] init];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(orientationChanged:)
+                                                     name:UIDeviceOrientationDidChangeNotification
+                                                   object:nil];
+        //FORK END
 
     }
     return self;
@@ -161,12 +167,14 @@ BOOL _sessionInterrupted = NO;
     }
 }
 
+//FORK START
 - (void)onVideoMergeProgUpdated:(NSDictionary *)event
 {
     if (_onVideoMergeProgressUpdated) {
         _onVideoMergeProgressUpdated(event);
     }
 }
+//FORK END
 
 - (void)layoutSubviews
 {
@@ -275,27 +283,20 @@ BOOL _sessionInterrupted = NO;
     return preset;
 }
 
-// SH
-// - (void)removeFromSuperview
-// {
-//     [self stopSession];
-//     [super removeFromSuperview];
-//     [[NSNotificationCenter defaultCenter] removeObserver:self name:UIDeviceOrientationDidChangeNotification object:nil];
-// }
 
 -(void)updateType
 {
     [self initializeCaptureSessionInput];
     [self startSession]; // will already check if session is running
 
-    //SH START
+    //FORK START
     dispatch_async(self.sessionQueue, ^{
         [self initializeCaptureSessionInput];
         if (!self.session.isRunning) {
             [self startSession];
         }
     });
-    //SH END
+    //FORK END
 }
 
 
@@ -304,7 +305,7 @@ BOOL _sessionInterrupted = NO;
     AVCaptureDevice *device = [self.videoCaptureDeviceInput device];
     NSError *error = nil;
 
-     if(device == nil){
+    if(device == nil){
         return;
     }
 
@@ -343,7 +344,6 @@ BOOL _sessionInterrupted = NO;
         {
             NSError *error = nil;
             if ([device lockForConfiguration:&error]) {
-                //SH: if ([device isTorchModeSupported:AVCaptureTorchModeOff]) {
                 if ([device isTorchActive]) {
                     [device setTorchMode:AVCaptureTorchModeOff];
                 }
@@ -609,7 +609,6 @@ BOOL _sessionInterrupted = NO;
         return;
     }
 
-    //SH: device.videoZoomFactor = (device.activeFormat.videoMaxZoomFactor - 1.0) * self.zoom + 1.0;
     float maxZoom;
     if(self.maxZoom > 1){
         maxZoom = MIN(self.maxZoom, device.activeFormat.videoMaxZoomFactor);
@@ -652,9 +651,9 @@ BOOL _sessionInterrupted = NO;
         __weak __typeof__(device) weakDevice = device;
         if ([device lockForConfiguration:&error]) {
             @try{
-            [device setWhiteBalanceModeLockedWithDeviceWhiteBalanceGains:rgbGains completionHandler:^(CMTime syncTime) {
-                [weakDevice unlockForConfiguration];
-            }];
+                [device setWhiteBalanceModeLockedWithDeviceWhiteBalanceGains:rgbGains completionHandler:^(CMTime syncTime) {
+                    [weakDevice unlockForConfiguration];
+                }];
             }
             @catch(NSException *exception){
                 RCTLogError(@"Failed to set white balance: %@", exception);
@@ -669,8 +668,6 @@ BOOL _sessionInterrupted = NO;
     [device unlockForConfiguration];
 }
 
-// SH: #if __has_include(<GoogleMobileVision/GoogleMobileVision.h>)
-// SH: - (void)updateFaceDetecting:(id)faceDetecting
 
 /// Set the AVCaptureDevice's ISO values based on RNCamera's 'exposure' value,
 /// which is a float between 0 and 1 if defined by the user or -1 to indicate that no
@@ -1011,11 +1008,8 @@ BOOL _sessionInterrupted = NO;
         [self record:tmpOptions resolve:resolve reject:reject];
     }];
 }
-
-
 - (void)record:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
 {
-
     if(self.videoCaptureDeviceInput == nil || !self.session.isRunning){
         reject(@"E_VIDEO_CAPTURE_FAILED", @"Camera is not ready.", nil);
         return;
@@ -1026,7 +1020,7 @@ BOOL _sessionInterrupted = NO;
         return;
     }
 
-    //SH START
+    //FORK START
    
     if (self.recordingState == RNRecordingStateRecording || self.recordingState == RNRecordingStateResumed) {
         return;
@@ -1038,7 +1032,7 @@ BOOL _sessionInterrupted = NO;
         options = self.videoOptions;
     }
    
-    //SH END
+    //FORK END
 
     NSInteger orientation = [options[@"orientation"] integerValue];
 
@@ -1070,7 +1064,7 @@ BOOL _sessionInterrupted = NO;
       return;
     }
 
-
+    
     // video preset will be cleanedup/restarted once capture is done
     // with a camera cleanup call
     if (options[@"quality"]) {
@@ -1228,10 +1222,8 @@ BOOL _sessionInterrupted = NO;
 
 - (void)stopRecording
 {
-    
-
     dispatch_async(self.sessionQueue, ^{
-        //SH START
+        //FORK START
         if (self.recordingState == RNRecordingStatePaused) {
             [self exportVideo];
             [self setRecordingState:RNRecordingStateStopped];
@@ -1240,12 +1232,10 @@ BOOL _sessionInterrupted = NO;
 
         [self setRecordingState:RNRecordingStateStopped];
         [self.movieFileOutput stopRecording];
-        //SH END
+        //FORK END
         if ([self.movieFileOutput isRecording]) {
             [self.movieFileOutput stopRecording];
-        }
-        else
-        {
+        } else {
             if(_recordRequested){
                 _recordRequested = NO;
             }
@@ -1253,9 +1243,9 @@ BOOL _sessionInterrupted = NO;
                 RCTLogWarn(@"Video is not recording.");
             }
         }
-        
     });
 }
+
 - (void)resumePreview
 {
     [[self.previewLayer connection] setEnabled:YES];
@@ -1266,7 +1256,7 @@ BOOL _sessionInterrupted = NO;
     [[self.previewLayer connection] setEnabled:NO];
 }
 
-//SH START
+//FORK START
 - (void)pauseRecording
 {
     [self setRecordingState:RNRecordingStatePaused];
@@ -1278,8 +1268,6 @@ BOOL _sessionInterrupted = NO;
     [self record:self.videoOptions resolve:self.videoRecordedResolve reject:self.videoRecordedReject];
 }
 
-//SH END
-
 - (void)setRecordingState:(enum RNRecordingState)state
 {
     _recordingState = state;
@@ -1290,7 +1278,7 @@ BOOL _sessionInterrupted = NO;
     return _recordingState;
 }
 
-
+//FORK END
 
 - (void)startSession
 {
@@ -1890,7 +1878,7 @@ BOOL _sessionInterrupted = NO;
     }
     if (success && self.videoRecordedResolve != nil) {
 
-        //SH START
+        //FORK START
         
         [self.videoFileURLsToMerge addObject:outputFileURL];
         if (self.recordingState == RNRecordingStateStopped) {
@@ -1898,8 +1886,7 @@ BOOL _sessionInterrupted = NO;
             return;
         }
         
-        //SH END
-
+        //FORK END
         NSMutableDictionary *result = [[NSMutableDictionary alloc] init];
 
         void (^resolveBlock)(void) = ^() {
@@ -1937,6 +1924,7 @@ BOOL _sessionInterrupted = NO;
 
 }
 
+//FORK START
 - (void)exportVideo
 {
     AVVideoCodecType videoCodec = self.videoCodecType;
@@ -1955,8 +1943,7 @@ BOOL _sessionInterrupted = NO;
         }];
     }
 }
-
-
+//FORK END
 - (void)cleanupCamera {
     self.videoRecordedResolve = nil;
     self.videoRecordedReject = nil;
@@ -2105,7 +2092,6 @@ BOOL _sessionInterrupted = NO;
         _onFacesDetected(event);
     }
 }
-
 
 # pragma mark - BarcodeDetectorMlkit
 
@@ -2272,7 +2258,7 @@ BOOL _sessionInterrupted = NO;
     return self.movieFileOutput != nil ? self.movieFileOutput.isRecording : NO;
 }
 
-
+//FORK START
 - (void)cleanAfterVideoExport
 {
     self.videoRecordedResolve = nil;
@@ -2485,5 +2471,7 @@ BOOL _sessionInterrupted = NO;
         }];
     }
 }
+//END START
 
 @end
+

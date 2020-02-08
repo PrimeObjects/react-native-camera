@@ -255,8 +255,12 @@ public class CameraView extends FrameLayout {
         state.zoom = getZoom();
         state.whiteBalance = getWhiteBalance();
         state.scanning = getScanning();
-        state.audioSource = getAudioSource();
         state.pictureSize = getPictureSize();
+
+        //FORK START
+        state.audioSource = getAudioSource();
+        //FORK END
+
         return state;
     }
 
@@ -278,8 +282,12 @@ public class CameraView extends FrameLayout {
         setZoom(ss.zoom);
         setWhiteBalance(ss.whiteBalance);
         setScanning(ss.scanning);
-        setAudioSource(ss.audioSource);
         setPictureSize(ss.pictureSize);
+
+        //FORK START
+        setAudioSource(ss.audioSource);
+        //FORK END
+
     }
 
     public void setUsingCamera2Api(boolean useCamera2) {
@@ -574,6 +582,7 @@ public class CameraView extends FrameLayout {
       return mImpl.getZoom();
     }
 
+    //FORK START
     public void setAudioSource(int audioSource) {
       mImpl.setAudioSource(audioSource);
     }
@@ -581,6 +590,7 @@ public class CameraView extends FrameLayout {
     public int getAudioSource() {
       return mImpl.getAudioSource();
     }
+    //FORK END
 
     public void setWhiteBalance(int whiteBalance) {
       mImpl.setWhiteBalance(whiteBalance);
@@ -615,6 +625,7 @@ public class CameraView extends FrameLayout {
         return mImpl.record(path, maxDuration, maxFileSize, recordAudio, profile, orientation);
     }
 
+    //FORK START
     public void pauseRecording() {
         mImpl.pauseRecording();
     }
@@ -622,6 +633,7 @@ public class CameraView extends FrameLayout {
     public void resumeRecording() {
         mImpl.resumeRecording();
     }
+    //FORK END
 
     public void stopRecording() {
         mImpl.stopRecording();
@@ -730,14 +742,17 @@ public class CameraView extends FrameLayout {
         float focusDepth;
 
         float zoom;
-
-        int audioSource;
-
+        
         int whiteBalance;
 
         boolean scanning;
 
         Size pictureSize;
+
+        //FORK START
+        int audioSource;
+        //FORK END
+
 
         @SuppressWarnings("WrongConstant")
         public SavedState(Parcel source, ClassLoader loader) {

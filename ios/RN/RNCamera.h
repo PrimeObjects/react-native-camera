@@ -6,7 +6,9 @@
 #import "FaceDetectorManagerMlkit.h"
 #import "BarcodeDetectorManagerMlkit.h"
 #import "TextDetectorManager.h"
+//FORK START
 #import "RNCameraManager.h"
+//FORK END
 
 @class RNCamera;
 
@@ -56,6 +58,7 @@
 @property(assign, nonatomic, nullable) NSNumber *deviceOrientation;
 @property(assign, nonatomic, nullable) NSNumber *orientation;
 
+//FORK START
 @property(nonatomic, strong) NSMutableArray *videoFileURLsToMerge;
 @property(nonatomic, strong) NSDictionary *videoOptions;
 @property(nonatomic, strong) AVAssetExportSession *exportSession;
@@ -63,6 +66,7 @@
 @property (assign, nonatomic) NSInteger audioSource;
 @property (nonatomic, assign, getter=isReadingBarCodes) BOOL barCodeReading;
 @property(assign, nonatomic) RNRecordingState recordingState;
+//FORK END
 
 - (id)initWithBridge:(RCTBridge *)bridge;
 - (void)updateType;
@@ -114,7 +118,9 @@
 - (bool)isRecording;
 - (void)onSubjectAreaChanged:(NSDictionary *)event;
 
+//FORK START
 - (void)pauseRecording;
 - (void)resumeRecording;
+//FORK END
 
 @end
