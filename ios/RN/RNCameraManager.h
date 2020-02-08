@@ -55,19 +55,6 @@ typedef NS_ENUM(NSInteger, RNCameraVideoResolution) {
     RNCameraVideo288p = 4,
 };
 
-typedef NS_ENUM(NSInteger, RNCameraAudioSource) {
-    RNCameraAudioSourceDefault = 0,
-    RNCameraAudioSourceMic = 1,
-    RNCameraAudioSourceBluetooth = 2,
-};
-
-typedef NS_ENUM(NSInteger, RNRecordingState) {
-    RNRecordingStateRecording = 0,
-    RNRecordingStateStopped = 1,
-    RNRecordingStatePaused = 2,
-    RNRecordingStateResumed = 3,
-};
-
 @interface RNCameraManager : RCTViewManager <RCTBridgeModule>
 
 + (NSDictionary *)validBarCodeTypes;

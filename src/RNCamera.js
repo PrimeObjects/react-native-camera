@@ -276,8 +276,6 @@ type PropsType = typeof View.props & {
   videoStabilizationMode?: number | string,
   pictureSize?: string,
   rectOfInterest: Rect,
-  audioSource?: number,
-  onVideoMergeProgressUpdated?: Function,
 };
 
 type StateType = {
@@ -287,6 +285,7 @@ type StateType = {
 };
 
 export type Status = 'READY' | 'PENDING_AUTHORIZATION' | 'NOT_AUTHORIZED';
+
 const CameraStatus: { [key: Status]: Status } = {
   READY: 'READY',
   PENDING_AUTHORIZATION: 'PENDING_AUTHORIZATION',
@@ -364,7 +363,6 @@ export default class Camera extends React.Component<PropsType, StateType> {
       portrait: 'portrait',
       portraitUpsideDown: 'portraitUpsideDown',
     },
-    AudioSource: CameraManager.AudioSource,
   };
 
   // Values under keys from this object will be transformed to native options
@@ -379,7 +377,6 @@ export default class Camera extends React.Component<PropsType, StateType> {
     faceDetectionClassifications: (CameraManager.FaceDetection || {}).Classifications,
     googleVisionBarcodeType: (CameraManager.GoogleVisionBarcodeDetection || {}).BarcodeType,
     videoStabilizationMode: CameraManager.VideoStabilization || {},
-    audioSource: CameraManager.AudioSource,
   };
 
   static propTypes = {
@@ -429,8 +426,6 @@ export default class Camera extends React.Component<PropsType, StateType> {
     mirrorVideo: PropTypes.bool,
     rectOfInterest: PropTypes.any,
     defaultVideoQuality: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    audioSource: PropTypes.number,
-    onVideoMergeProgressUpdated: PropTypes.func,
   };
 
   static defaultProps: Object = {
@@ -479,7 +474,6 @@ export default class Camera extends React.Component<PropsType, StateType> {
     pictureSize: 'None',
     videoStabilizationMode: 0,
     mirrorVideo: false,
-    audioSource: CameraManager.AudioSource.default,
   };
 
   _cameraRef: ?Object;
@@ -605,6 +599,7 @@ export default class Camera extends React.Component<PropsType, StateType> {
   stopRecording() {
     CameraManager.stopRecording(this._cameraHandle);
   }
+
   pausePreview() {
     CameraManager.pausePreview(this._cameraHandle);
   }
@@ -615,14 +610,6 @@ export default class Camera extends React.Component<PropsType, StateType> {
 
   resumePreview() {
     CameraManager.resumePreview(this._cameraHandle);
-  }
-
-  pauseRecording() {
-    CameraManager.pauseRecording(this._cameraHandle);
-  }
-
-  resumeRecording() {
-    CameraManager.resumeRecording(this._cameraHandle);
   }
 
   _onMountError = ({ nativeEvent }: EventCallbackArgumentsType) => {
@@ -661,12 +648,6 @@ export default class Camera extends React.Component<PropsType, StateType> {
   _onPictureSaved = ({ nativeEvent }: EventCallbackArgumentsType) => {
     if (this.props.onPictureSaved) {
       this.props.onPictureSaved(nativeEvent);
-    }
-  };
-
-  _onVideoMergeProgressUpdated = ({ nativeEvent }: EventCallbackArgumentsType) => {
-    if (this.props.onVideoMergeProgressUpdated) {
-      this.props.onVideoMergeProgressUpdated(nativeEvent);
     }
   };
 
@@ -783,17 +764,6 @@ export default class Camera extends React.Component<PropsType, StateType> {
     );
   }
 
-  async componentWillMount() {
-    const hasVideoAndAudio = this.props.captureAudio;
-    const isAuthorized = await requestPermissions(
-      hasVideoAndAudio,
-      CameraManager,
-      this.props.permissionDialogTitle,
-      this.props.permissionDialogMessage,
-    );
-    this.setState({ isAuthorized, isAuthorizationChecked: true });
-  }
-
   getStatus = (): Status => {
     const { isAuthorized, isAuthorizationChecked } = this.state;
     if (isAuthorizationChecked === false) {
@@ -838,7 +808,6 @@ export default class Camera extends React.Component<PropsType, StateType> {
             onTextRecognized={this._onObjectDetected(this.props.onTextRecognized)}
             onPictureSaved={this._onPictureSaved}
             onSubjectAreaChanged={this._onSubjectAreaChanged}
-            onVideoMergeProgressUpdated={this._onVideoMergeProgressUpdated}
           />
           {this.renderChildren()}
         </View>
@@ -910,6 +879,5 @@ const RNCamera = requireNativeComponent('RNCamera', Camera, {
     onSubjectAreaChanged: true,
     renderToHardwareTextureAndroid: true,
     testID: true,
-    onVideoMergeProgressUpdated: true,
   },
 });

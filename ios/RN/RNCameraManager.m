@@ -24,7 +24,6 @@ RCT_EXPORT_VIEW_PROPERTY(onPictureSaved, RCTDirectEventBlock);
 RCT_EXPORT_VIEW_PROPERTY(onTextRecognized, RCTDirectEventBlock);
 RCT_EXPORT_VIEW_PROPERTY(onSubjectAreaChanged, RCTDirectEventBlock);
 RCT_EXPORT_VIEW_PROPERTY(videoStabilizationMode, NSInteger);
-RCT_EXPORT_VIEW_PROPERTY(onVideoMergeProgressUpdated, RCTDirectEventBlock);
 
 + (BOOL)requiresMainQueueSetup
 {
@@ -78,18 +77,13 @@ RCT_EXPORT_VIEW_PROPERTY(onVideoMergeProgressUpdated, RCTDirectEventBlock);
              @"VideoStabilization": [[self class] validVideoStabilizationModes],
              @"GoogleVisionBarcodeDetection": @{
                  @"BarcodeType": [[self class] barcodeDetectorConstants],
-             },
-             @"AudioSource": @{
-                     @"default": @(RNCameraAudioSourceDefault),
-                     @"mic": @(RNCameraAudioSourceMic),
-                     @"bluetooth": @(RNCameraAudioSourceBluetooth),
-                     },
+             }
              };
 }
 
 - (NSArray<NSString *> *)supportedEvents
 {
-    return @[@"onCameraReady", @"onMountError", @"onBarCodeRead", @"onFacesDetected", @"onPictureTaken", @"onPictureSaved", @"onTextRecognized", @"onGoogleVisionBarcodesDetected", @"onSubjectAreaChanged", @"onVideoMergeProgressUpdated"];
+    return @[@"onCameraReady", @"onMountError", @"onBarCodeRead", @"onFacesDetected", @"onPictureTaken", @"onPictureSaved", @"onTextRecognized", @"onGoogleVisionBarcodesDetected", @"onSubjectAreaChanged"];
 }
 
 + (NSDictionary *)validCodecTypes
@@ -372,13 +366,6 @@ RCT_REMAP_METHOD(takePicture,
     }];
 }
 
-
-RCT_CUSTOM_VIEW_PROPERTY(audioSource, NSInteger, RNCamera)
-{
-    [view setAudioSource:[RCTConvert NSInteger:json]];
-}
-
-
 RCT_REMAP_METHOD(record,
                  withOptions:(NSDictionary *)options
                  reactTag:(nonnull NSNumber *)reactTag
@@ -437,30 +424,6 @@ RCT_REMAP_METHOD(stopRecording, reactTag:(nonnull NSNumber *)reactTag)
             RCTLogError(@"Invalid view returned from registry, expecting RNCamera, got: %@", view);
         } else {
             [view stopRecording];
-        }
-    }];
-}
-
-RCT_REMAP_METHOD(pauseRecording, reactTag1:(nonnull NSNumber *)reactTag1)
-{
-    [self.bridge.uiManager addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, RNCamera *> *viewRegistry) {
-        RNCamera *view = viewRegistry[reactTag1];
-        if (![view isKindOfClass:[RNCamera class]]) {
-            RCTLogError(@"Invalid view returned from registry, expecting RNCamera, got: %@", view);
-        } else {
-            [view pauseRecording];
-        }
-    }];
-}
-
-RCT_REMAP_METHOD(resumeRecording, reactTag2:(nonnull NSNumber *)reactTag2)
-{
-    [self.bridge.uiManager addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, RNCamera *> *viewRegistry) {
-        RNCamera *view = viewRegistry[reactTag2];
-        if (![view isKindOfClass:[RNCamera class]]) {
-            RCTLogError(@"Invalid view returned from registry, expecting RNCamera, got: %@", view);
-        } else {
-            [view resumeRecording];
         }
     }];
 }

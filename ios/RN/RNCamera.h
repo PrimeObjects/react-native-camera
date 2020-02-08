@@ -6,7 +6,6 @@
 #import "FaceDetectorManagerMlkit.h"
 #import "BarcodeDetectorManagerMlkit.h"
 #import "TextDetectorManager.h"
-#import "RNCameraManager.h"
 
 @class RNCamera;
 
@@ -55,14 +54,6 @@
 @property(assign, nonatomic, nullable) NSNumber *defaultVideoQuality;
 @property(assign, nonatomic, nullable) NSNumber *deviceOrientation;
 @property(assign, nonatomic, nullable) NSNumber *orientation;
-
-@property(nonatomic, strong) NSMutableArray *videoFileURLsToMerge;
-@property(nonatomic, strong) NSDictionary *videoOptions;
-@property(nonatomic, strong) AVAssetExportSession *exportSession;
-@property(nonatomic, strong) NSTimer *exportSessionProgressBarTimer;
-@property (assign, nonatomic) NSInteger audioSource;
-@property (nonatomic, assign, getter=isReadingBarCodes) BOOL barCodeReading;
-@property(assign, nonatomic) RNRecordingState recordingState;
 
 - (id)initWithBridge:(RCTBridge *)bridge;
 - (void)updateType;
@@ -113,8 +104,5 @@
 - (void)onBarcodesDetected:(NSDictionary *)event;
 - (bool)isRecording;
 - (void)onSubjectAreaChanged:(NSDictionary *)event;
-
-- (void)pauseRecording;
-- (void)resumeRecording;
 
 @end

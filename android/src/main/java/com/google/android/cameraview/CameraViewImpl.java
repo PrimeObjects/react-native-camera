@@ -28,10 +28,10 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.SortedSet;
 
+
 abstract class CameraViewImpl {
 
     protected final Callback mCallback;
-
     protected final PreviewImpl mPreview;
 
     // Background handler that the implementation an use to run heavy tasks in background
@@ -63,6 +63,7 @@ abstract class CameraViewImpl {
     abstract void setFacing(int facing);
 
     abstract int getFacing();
+
     abstract void setCameraId(String id);
 
     abstract String getCameraId();
@@ -76,7 +77,6 @@ abstract class CameraViewImpl {
     abstract void setPictureSize(Size size);
 
     abstract Size getPictureSize();
-
 
     /**
      * @return {@code true} if the aspect ratio was changed.
@@ -99,13 +99,8 @@ abstract class CameraViewImpl {
 
     abstract void takePicture(ReadableMap options);
 
-
     abstract boolean record(String path, int maxDuration, int maxFileSize,
                             boolean recordAudio, CamcorderProfile profile, int orientation);
-
-    abstract void pauseRecording();
-
-    abstract void resumeRecording();
 
     abstract void stopRecording();
 
@@ -116,6 +111,7 @@ abstract class CameraViewImpl {
     abstract void setDeviceOrientation(int deviceOrientation);
 
     abstract void setFocusArea(float x, float y);
+
     abstract void setFocusDepth(float value);
 
     abstract float getFocusDepth();
@@ -123,10 +119,6 @@ abstract class CameraViewImpl {
     abstract void setZoom(float zoom);
 
     abstract float getZoom();
-
-    abstract void setAudioSource(int audioSource);
-
-    abstract int getAudioSource();
 
     abstract void setWhiteBalance(int whiteBalance);
 
@@ -139,6 +131,7 @@ abstract class CameraViewImpl {
     abstract public void resumePreview();
 
     abstract public void pausePreview();
+
     abstract public void setPreviewTexture(SurfaceTexture surfaceTexture);
 
     abstract public Size getPreviewSize();
