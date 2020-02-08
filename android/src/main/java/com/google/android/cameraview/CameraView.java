@@ -22,7 +22,6 @@ import android.graphics.Rect;
 import android.hardware.Camera;
 import android.media.CamcorderProfile;
 import android.os.Build;
-
 import android.os.HandlerThread;
 import android.os.Handler;
 import android.os.Parcel;
@@ -97,6 +96,7 @@ public class CameraView extends FrameLayout {
     protected HandlerThread mBgThread;
     protected Handler mBgHandler;
 
+
     public CameraView(Context context, boolean fallbackToOldApi) {
         this(context, null, fallbackToOldApi);
     }
@@ -113,6 +113,8 @@ public class CameraView extends FrameLayout {
         mBgThread = new HandlerThread("RNCamera-Handler-Thread");
         mBgThread.start();
         mBgHandler = new Handler(mBgThread.getLooper());
+
+
         if (isInEditMode()){
             mCallbacks = null;
             mDisplayOrientationDetector = null;
@@ -423,6 +425,7 @@ public class CameraView extends FrameLayout {
         //noinspection WrongConstant
         return mImpl.getFacing();
     }
+
      /**
      * Chooses camera by its camera iD
      *
@@ -440,6 +443,7 @@ public class CameraView extends FrameLayout {
     public String getCameraId() {
       return mImpl.getCameraId();
     }
+
     /**
      * Gets all the aspect ratios supported by the current camera.
      */
@@ -453,6 +457,7 @@ public class CameraView extends FrameLayout {
     public List<Properties> getCameraIds() {
         return mImpl.getCameraIds();
     }
+
     /**
      * Sets the aspect ratio of camera.
      *

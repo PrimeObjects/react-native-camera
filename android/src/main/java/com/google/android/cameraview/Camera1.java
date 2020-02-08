@@ -1413,6 +1413,7 @@ class Camera1 extends CameraViewImpl implements MediaRecorder.OnInfoListener,
     }
 
     private void setUpMediaRecorder(String path, int maxDuration, int maxFileSize, boolean recordAudio, CamcorderProfile profile) {
+
         mMediaRecorder = new MediaRecorder();
         mCamera.unlock();
 

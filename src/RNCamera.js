@@ -288,6 +288,7 @@ type StateType = {
 };
 
 export type Status = 'READY' | 'PENDING_AUTHORIZATION' | 'NOT_AUTHORIZED';
+
 const CameraStatus: { [key: Status]: Status } = {
   READY: 'READY',
   PENDING_AUTHORIZATION: 'PENDING_AUTHORIZATION',
@@ -613,6 +614,7 @@ export default class Camera extends React.Component<PropsType, StateType> {
   stopRecording() {
     CameraManager.stopRecording(this._cameraHandle);
   }
+
   pausePreview() {
     CameraManager.pausePreview(this._cameraHandle);
   }
