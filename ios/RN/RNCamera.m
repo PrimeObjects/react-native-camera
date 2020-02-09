@@ -1065,6 +1065,7 @@ BOOL _sessionInterrupted = NO;
         }
     }
 
+
     AVCaptureConnection *connection = [self.movieFileOutput connectionWithMediaType:AVMediaTypeVideo];
     
     if (self.videoStabilizationMode != 0) {
@@ -1122,6 +1123,10 @@ BOOL _sessionInterrupted = NO;
         if (options[@"maxFileSize"]) {
             self.movieFileOutput.maxRecordedFileSize = [options[@"maxFileSize"] integerValue];
         }
+        
+        //FORK START
+        [self updateSessionAudioIsMuted:!!options[@"mute"]];
+        //FORK END
         
         if (options[@"codec"]) {
             if (@available(iOS 10, *)) {
@@ -1610,6 +1615,60 @@ BOOL _sessionInterrupted = NO;
     }
 #endif
 }
+
+//FORK START
+- (void)updateSessionAudioIsMuted:(BOOL)isMuted
+{
+    [self.session beginConfiguration];
+
+    for (AVCaptureDeviceInput* input in [self.session inputs]) {
+        if ([input.device hasMediaType:AVMediaTypeAudio]) {
+            [self.session removeInput:input];
+        }
+    }
+
+    if (!isMuted) {
+        NSError *error = nil;
+        AVCaptureDevice *audioCaptureDevice;
+
+        if (self.audioSource == RNCameraAudioSourceDefault) {
+            audioCaptureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+        } else if (self.audioSource == RNCameraAudioSourceMic) {
+            audioCaptureDevice = [AVCaptureDevice defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInMicrophone
+                                                    mediaType:nil
+                                                    position:AVCaptureDevicePositionUnspecified];
+        } else if (self.audioSource == RNCameraAudioSourceBluetooth) {
+            self.session.usesApplicationAudioSession = true;
+            self.session.automaticallyConfiguresApplicationAudioSession = false;
+            AVAudioSession *audioSession = [AVAudioSession sharedInstance];
+            [audioSession setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionAllowBluetooth error:nil];
+
+            for(AVAudioSessionPortDescription* portDescription in audioSession.availableInputs) {
+                if (portDescription.portType == AVAudioSessionPortBluetoothHFP) {
+                    [audioSession setPreferredInput:portDescription error:nil];
+                }
+            }
+
+            [[AVAudioSession sharedInstance] setActive:YES error:nil];
+            audioCaptureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+        }
+
+        AVCaptureDeviceInput *audioDeviceInput = [AVCaptureDeviceInput deviceInputWithDevice:audioCaptureDevice error:&error];
+
+        if (error || audioDeviceInput == nil) {
+            RCTLogWarn(@"%s: %@", __func__, error);
+            return;
+        }
+
+        if ([self.session canAddInput:audioDeviceInput]) {
+            [self.session addInput:audioDeviceInput];
+        }
+    }
+
+    [self.session commitConfiguration];
+ 
+}
+//FORK END
 
 
 // We are using this event to detect audio interruption ended
