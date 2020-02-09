@@ -2402,9 +2402,8 @@ BOOL _sessionInterrupted = NO;
         self.exportSession.shouldOptimizeForNetworkUse = YES;
         self.exportSession.videoComposition = mutableVideoComposition;
 
-       
 
- [self.exportSession exportAsynchronouslyWithCompletionHandler:^{
+         [self.exportSession exportAsynchronouslyWithCompletionHandler:^{
         
          [self cleanAfterVideoExport];
                            
