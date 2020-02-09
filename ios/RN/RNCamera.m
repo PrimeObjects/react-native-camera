@@ -1049,212 +1049,161 @@ BOOL _sessionInterrupted = NO;
       return;
     }
 
-    //FORK START
-
-    if (options[@"maxDuration"]) {
-        Float64 maxDuration = [options[@"maxDuration"] floatValue];
-        self.movieFileOutput.maxRecordedDuration = CMTimeMakeWithSeconds(maxDuration, 30);
-    }
-
-    if (options[@"maxFileSize"]) {
-        self.movieFileOutput.maxRecordedFileSize = [options[@"maxFileSize"] integerValue];
-    }
-
+    
+    // video preset will be cleanedup/restarted once capture is done
+    // with a camera cleanup call
     if (options[@"quality"]) {
-        [self updateSessionPreset:[RNCameraUtils captureSessionPresetForVideoResolution:(RNCameraVideoResolution)[options[@"quality"] integerValue]]];
+        AVCaptureSessionPreset newQuality = [RNCameraUtils captureSessionPresetForVideoResolution:(RNCameraVideoResolution)[options[@"quality"] integerValue]];
+        if (self.session.sessionPreset != newQuality) {
+            [self updateSessionPreset:newQuality];
+        }
+    }
+    else{
+        AVCaptureSessionPreset newQuality = [self getDefaultPresetVideo];
+        if (self.session.sessionPreset != newQuality) {
+            [self updateSessionPreset:newQuality];
+        }
     }
 
-    [self updateSessionAudioIsMuted:!!options[@"mute"]];
 
     AVCaptureConnection *connection = [self.movieFileOutput connectionWithMediaType:AVMediaTypeVideo];
-    [connection setVideoOrientation:[RNCameraUtils videoOrientationForInterfaceOrientation:[[UIApplication sharedApplication] statusBarOrientation]]];
-
-    if (options[@"codec"]) {
-      AVVideoCodecType videoCodecType = options[@"codec"];
-      if (@available(iOS 10, *)) {
-        if ([self.movieFileOutput.availableVideoCodecTypes containsObject:videoCodecType]) {
-          [self.movieFileOutput setOutputSettings:@{AVVideoCodecKey:videoCodecType} forConnection:connection];
-          self.videoCodecType = videoCodecType;
+    
+    if (self.videoStabilizationMode != 0) {
+        if (connection.isVideoStabilizationSupported == NO) {
+            RCTLogWarn(@"%s: Video Stabilization is not supported on this device.", __func__);
         } else {
-          RCTLogWarn(@"%s: Video Codec '%@' is not supported on this device.", __func__, videoCodecType);
+            [connection setPreferredVideoStabilizationMode:self.videoStabilizationMode];
         }
-      } else {
-        RCTLogWarn(@"%s: Setting videoCodec is only supported above iOS version 10.", __func__);
-      }
+    }
+    [connection setVideoOrientation:orientation];
+
+    
+
+    BOOL recordAudio = [options valueForKey:@"mute"] == nil || ([options valueForKey:@"mute"] != nil && ![options[@"mute"] boolValue]);
+
+
+    // sound recording connection, we can easily turn it on/off without manipulating inputs, this prevents flickering.
+    // note that mute will also be set to true
+    // if captureAudio is set to false on the JS side.
+    // Check the property anyways just in case it is manipulated
+    // with setNativeProps
+    if(recordAudio && self.captureAudio){
+
+        // if we haven't initialized our capture session yet
+        // initialize it. This will cause video to flicker.
+        [self initializeAudioCaptureSessionInput];
+
+
+        // finally, make sure we got access to the capture device
+        // and turn the connection on.
+        if(self.audioCaptureDeviceInput != nil){
+            AVCaptureConnection *audioConnection = [self.movieFileOutput connectionWithMediaType:AVMediaTypeAudio];
+            audioConnection.enabled = YES;
+        }
+
+    }
+
+    // if we have a capture input but are muted
+    // disable connection. No flickering here.
+    else if(self.audioCaptureDeviceInput != nil){
+        AVCaptureConnection *audioConnection = [self.movieFileOutput connectionWithMediaType:AVMediaTypeAudio];
+         audioConnection.enabled = NO;
     }
 
     dispatch_async(self.sessionQueue, ^{
+        
+        // session preset might affect this, so we run this code
+        // also in the session queue
+        
+        if (options[@"maxDuration"]) {
+            Float64 maxDuration = [options[@"maxDuration"] floatValue];
+            self.movieFileOutput.maxRecordedDuration = CMTimeMakeWithSeconds(maxDuration, 30);
+        }
+
+        if (options[@"maxFileSize"]) {
+            self.movieFileOutput.maxRecordedFileSize = [options[@"maxFileSize"] integerValue];
+        }
+        
+        if (options[@"codec"]) {
+            if (@available(iOS 10, *)) {
+                AVVideoCodecType videoCodecType = options[@"codec"];
+                if ([self.movieFileOutput.availableVideoCodecTypes containsObject:videoCodecType]) {
+                    self.videoCodecType = videoCodecType;
+                    if(options[@"videoBitrate"]) {
+                        NSString *videoBitrate = options[@"videoBitrate"];
+                        [self.movieFileOutput setOutputSettings:@{
+                          AVVideoCodecKey:videoCodecType,
+                          AVVideoCompressionPropertiesKey:
+                              @{
+                                  AVVideoAverageBitRateKey:videoBitrate
+                              }
+                          } forConnection:connection];
+                    } else {
+                        [self.movieFileOutput setOutputSettings:@{AVVideoCodecKey:videoCodecType} forConnection:connection];
+                    }
+                } else {
+                    RCTLogWarn(@"Video Codec %@ is not available.", videoCodecType);
+                }
+            }
+            else {
+                RCTLogWarn(@"%s: Setting videoCodec is only supported above iOS version 10.", __func__);
+            }
+        }
+
+        
+        NSString *path = nil;
+        if (options[@"path"]) {
+            path = options[@"path"];
+        }
+        else {
+            path = [RNFileSystem generatePathInDirectory:[[RNFileSystem cacheDirectoryPath] stringByAppendingPathComponent:@"Camera"] withExtension:@".mov"];
+        }
+
+        if ([options[@"mirrorVideo"] boolValue]) {
+            if ([connection isVideoMirroringSupported]) {
+                [connection setAutomaticallyAdjustsVideoMirroring:NO];
+                [connection setVideoMirrored:YES];
+            }
+        }
+
+        // finally, commit our config changes before starting to record
+        [self.session commitConfiguration];
+
+        // and update flash in case it was turned off automatically
+        // due to session/preset changes
         [self updateFlashMode];
-        NSString *path = [RNFileSystem generatePathInDirectory:[[RNFileSystem cacheDirectoryPath] stringByAppendingPathComponent:@"Camera"] withExtension:@".mov"];
-        NSURL *outputURL = [[NSURL alloc] initFileURLWithPath:path];
-        [self.movieFileOutput startRecordingToOutputFileURL:outputURL recordingDelegate:self];
-        self.videoRecordedResolve = resolve;
-        self.videoRecordedReject = reject;
+
+        // after everything is set, start recording with a tiny delay
+        // to ensure the camera already has focus and exposure set.
+        double delayInSeconds = 0.5;
+        dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
+
+        // we will use this flag to stop recording
+        // if it was requested to stop before it could even start
+        _recordRequested = YES;
+
+        dispatch_after(popTime, self.sessionQueue, ^(void){
+
+            // our session might have stopped in between the timeout
+            // so make sure it is still valid, otherwise, error and cleanup
+            if(self.movieFileOutput != nil && self.videoCaptureDeviceInput != nil && _recordRequested){
+                NSURL *outputURL = [[NSURL alloc] initFileURLWithPath:path];
+                [self.movieFileOutput startRecordingToOutputFileURL:outputURL recordingDelegate:self];
+                self.videoRecordedResolve = resolve;
+                self.videoRecordedReject = reject;
+
+            }
+            else{
+                reject(@"E_VIDEO_CAPTURE_FAILED", !_recordRequested ? @"Recording request cancelled." : @"Camera is not ready.", nil);
+                [self cleanupCamera];
+            }
+
+            // reset our flag
+            _recordRequested = NO;
+        });
+
+
     });
-
-    //FORK END
-    
-    // // video preset will be cleanedup/restarted once capture is done
-    // // with a camera cleanup call
-    // if (options[@"quality"]) {
-    //     AVCaptureSessionPreset newQuality = [RNCameraUtils captureSessionPresetForVideoResolution:(RNCameraVideoResolution)[options[@"quality"] integerValue]];
-    //     if (self.session.sessionPreset != newQuality) {
-    //         [self updateSessionPreset:newQuality];
-    //     }
-    // }
-    // else{
-    //     AVCaptureSessionPreset newQuality = [self getDefaultPresetVideo];
-    //     if (self.session.sessionPreset != newQuality) {
-    //         [self updateSessionPreset:newQuality];
-    //     }
-    // }
-
-    // //FORK START
-    //   [self updateSessionAudioIsMuted:!!options[@"mute"]];
-    // //FORK END
-     
-
-    // AVCaptureConnection *connection = [self.movieFileOutput connectionWithMediaType:AVMediaTypeVideo];
-    
-    // if (self.videoStabilizationMode != 0) {
-    //     if (connection.isVideoStabilizationSupported == NO) {
-    //         RCTLogWarn(@"%s: Video Stabilization is not supported on this device.", __func__);
-    //     } else {
-    //         [connection setPreferredVideoStabilizationMode:self.videoStabilizationMode];
-    //     }
-    // }
-    // [connection setVideoOrientation:orientation];
-
-    
-
-    // BOOL recordAudio = [options valueForKey:@"mute"] == nil || ([options valueForKey:@"mute"] != nil && ![options[@"mute"] boolValue]);
-
-
-    // // sound recording connection, we can easily turn it on/off without manipulating inputs, this prevents flickering.
-    // // note that mute will also be set to true
-    // // if captureAudio is set to false on the JS side.
-    // // Check the property anyways just in case it is manipulated
-    // // with setNativeProps
-    // if(recordAudio && self.captureAudio){
-
-    //     // if we haven't initialized our capture session yet
-    //     // initialize it. This will cause video to flicker.
-    //     [self initializeAudioCaptureSessionInput];
-
-
-    //     // finally, make sure we got access to the capture device
-    //     // and turn the connection on.
-    //     if(self.audioCaptureDeviceInput != nil){
-    //         AVCaptureConnection *audioConnection = [self.movieFileOutput connectionWithMediaType:AVMediaTypeAudio];
-    //         audioConnection.enabled = YES;
-    //     }
-
-    // }
-
-    // // if we have a capture input but are muted
-    // // disable connection. No flickering here.
-    // else if(self.audioCaptureDeviceInput != nil){
-    //     AVCaptureConnection *audioConnection = [self.movieFileOutput connectionWithMediaType:AVMediaTypeAudio];
-    //      audioConnection.enabled = NO;
-    // }
-
-    // dispatch_async(self.sessionQueue, ^{
-        
-    //     // session preset might affect this, so we run this code
-    //     // also in the session queue
-        
-    //     if (options[@"maxDuration"]) {
-    //         Float64 maxDuration = [options[@"maxDuration"] floatValue];
-    //         self.movieFileOutput.maxRecordedDuration = CMTimeMakeWithSeconds(maxDuration, 30);
-    //     }
-
-    //     if (options[@"maxFileSize"]) {
-    //         self.movieFileOutput.maxRecordedFileSize = [options[@"maxFileSize"] integerValue];
-    //     }
-        
-        
-    //     if (options[@"codec"]) {
-    //         if (@available(iOS 10, *)) {
-    //             AVVideoCodecType videoCodecType = options[@"codec"];
-    //             if ([self.movieFileOutput.availableVideoCodecTypes containsObject:videoCodecType]) {
-    //                 self.videoCodecType = videoCodecType;
-    //                 if(options[@"videoBitrate"]) {
-    //                     NSString *videoBitrate = options[@"videoBitrate"];
-    //                     [self.movieFileOutput setOutputSettings:@{
-    //                       AVVideoCodecKey:videoCodecType,
-    //                       AVVideoCompressionPropertiesKey:
-    //                           @{
-    //                               AVVideoAverageBitRateKey:videoBitrate
-    //                           }
-    //                       } forConnection:connection];
-    //                 } else {
-    //                     [self.movieFileOutput setOutputSettings:@{AVVideoCodecKey:videoCodecType} forConnection:connection];
-    //                 }
-    //             } else {
-    //                 RCTLogWarn(@"Video Codec %@ is not available.", videoCodecType);
-    //             }
-    //         }
-    //         else {
-    //             RCTLogWarn(@"%s: Setting videoCodec is only supported above iOS version 10.", __func__);
-    //         }
-    //     }
-
-        
-    //     NSString *path = nil;
-    //     if (options[@"path"]) {
-    //         path = options[@"path"];
-    //     }
-    //     else {
-    //         path = [RNFileSystem generatePathInDirectory:[[RNFileSystem cacheDirectoryPath] stringByAppendingPathComponent:@"Camera"] withExtension:@".mov"];
-    //     }
-
-    //     if ([options[@"mirrorVideo"] boolValue]) {
-    //         if ([connection isVideoMirroringSupported]) {
-    //             [connection setAutomaticallyAdjustsVideoMirroring:NO];
-    //             [connection setVideoMirrored:YES];
-    //         }
-    //     }
-
-    //     // finally, commit our config changes before starting to record
-    //    [self.session commitConfiguration];
-        
-       
-
-    //     // and update flash in case it was turned off automatically
-    //     // due to session/preset changes
-    //     [self updateFlashMode];
-
-    //     // after everything is set, start recording with a tiny delay
-    //     // to ensure the camera already has focus and exposure set.
-    //     double delayInSeconds = 0.5;
-    //     dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
-
-    //     // we will use this flag to stop recording
-    //     // if it was requested to stop before it could even start
-    //     _recordRequested = YES;
-
-    //     dispatch_after(popTime, self.sessionQueue, ^(void){
-
-    //         // our session might have stopped in between the timeout
-    //         // so make sure it is still valid, otherwise, error and cleanup
-    //         if(self.movieFileOutput != nil && self.videoCaptureDeviceInput != nil && _recordRequested){
-    //             NSURL *outputURL = [[NSURL alloc] initFileURLWithPath:path];
-    //             [self.movieFileOutput startRecordingToOutputFileURL:outputURL recordingDelegate:self];
-    //             self.videoRecordedResolve = resolve;
-    //             self.videoRecordedReject = reject;
-
-    //         }
-    //         else{
-    //             reject(@"E_VIDEO_CAPTURE_FAILED", !_recordRequested ? @"Recording request cancelled." : @"Camera is not ready.", nil);
-    //             [self cleanupCamera];
-    //         }
-
-    //         // reset our flag
-    //         _recordRequested = NO;
-    //     });
-
-
-    // });
 }
 
 - (void)stopRecording
@@ -1426,8 +1375,35 @@ BOOL _sessionInterrupted = NO;
     if(self.audioCaptureDeviceInput == nil){
         NSError *error = nil;
 
-        AVCaptureDevice *audioCaptureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+        //FORK START
+
+        AVCaptureDevice *audioCaptureDevice;
+
+        if (self.audioSource == RNCameraAudioSourceDefault) {
+            audioCaptureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+        } else if (self.audioSource == RNCameraAudioSourceMic) {
+            audioCaptureDevice = [AVCaptureDevice defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInMicrophone
+                                                    mediaType:nil
+                                                    position:AVCaptureDevicePositionUnspecified];
+        } else if (self.audioSource == RNCameraAudioSourceBluetooth) {
+            self.session.usesApplicationAudioSession = true;
+            self.session.automaticallyConfiguresApplicationAudioSession = false;
+            AVAudioSession *audioSession = [AVAudioSession sharedInstance];
+            [audioSession setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionAllowBluetooth error:nil];
+
+            for(AVAudioSessionPortDescription* portDescription in audioSession.availableInputs) {
+                if (portDescription.portType == AVAudioSessionPortBluetoothHFP) {
+                    [audioSession setPreferredInput:portDescription error:nil];
+                }
+            }
+
+            [[AVAudioSession sharedInstance] setActive:YES error:nil];
+            audioCaptureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+        }
+
         AVCaptureDeviceInput *audioDeviceInput = [AVCaptureDeviceInput deviceInputWithDevice:audioCaptureDevice error:&error];
+
+        //FORK END
 
         if (error || audioDeviceInput == nil) {
             RCTLogWarn(@"%s: %@", __func__, error);
@@ -1662,62 +1638,6 @@ BOOL _sessionInterrupted = NO;
     }
 #endif
 }
-
-//FORK START
-- (void)updateSessionAudioIsMuted:(BOOL)isMuted
-{
-     dispatch_async(self.sessionQueue, ^{
-    [self.session beginConfiguration];
-
-    for (AVCaptureDeviceInput* input in [self.session inputs]) {
-        if ([input.device hasMediaType:AVMediaTypeAudio]) {
-            [self.session removeInput:input];
-        }
-    }
-
-    if (!isMuted) {
-        NSError *error = nil;
-        AVCaptureDevice *audioCaptureDevice;
-
-        if (self.audioSource == RNCameraAudioSourceDefault) {
-            audioCaptureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
-        } else if (self.audioSource == RNCameraAudioSourceMic) {
-            audioCaptureDevice = [AVCaptureDevice defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInMicrophone
-                                                    mediaType:nil
-                                                    position:AVCaptureDevicePositionUnspecified];
-        } else if (self.audioSource == RNCameraAudioSourceBluetooth) {
-            self.session.usesApplicationAudioSession = true;
-            self.session.automaticallyConfiguresApplicationAudioSession = false;
-            AVAudioSession *audioSession = [AVAudioSession sharedInstance];
-            [audioSession setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionAllowBluetooth error:nil];
-
-            for(AVAudioSessionPortDescription* portDescription in audioSession.availableInputs) {
-                if (portDescription.portType == AVAudioSessionPortBluetoothHFP) {
-                    [audioSession setPreferredInput:portDescription error:nil];
-                }
-            }
-
-            [[AVAudioSession sharedInstance] setActive:YES error:nil];
-            audioCaptureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
-        }
-
-        AVCaptureDeviceInput *audioDeviceInput = [AVCaptureDeviceInput deviceInputWithDevice:audioCaptureDevice error:&error];
-
-        if (error || audioDeviceInput == nil) {
-            RCTLogWarn(@"%s: %@", __func__, error);
-            return;
-        }
-
-        if ([self.session canAddInput:audioDeviceInput]) {
-            [self.session addInput:audioDeviceInput];
-        }
-    }
-
-    [self.session commitConfiguration];
-     });
- 
-}
-//FORK END
 
 
 // We are using this event to detect audio interruption ended
