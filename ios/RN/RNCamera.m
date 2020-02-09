@@ -1065,6 +1065,10 @@ BOOL _sessionInterrupted = NO;
         }
     }
 
+    //FORK START
+      [self updateSessionAudioIsMuted:!!options[@"mute"]];
+    //FORK END
+     
 
     AVCaptureConnection *connection = [self.movieFileOutput connectionWithMediaType:AVMediaTypeVideo];
     
@@ -1124,9 +1128,6 @@ BOOL _sessionInterrupted = NO;
             self.movieFileOutput.maxRecordedFileSize = [options[@"maxFileSize"] integerValue];
         }
         
-        //FORK START
-        [self updateSessionAudioIsMuted:!!options[@"mute"]];
-        //FORK END
         
         if (options[@"codec"]) {
             if (@available(iOS 10, *)) {
@@ -1171,7 +1172,9 @@ BOOL _sessionInterrupted = NO;
         }
 
         // finally, commit our config changes before starting to record
-        [self.session commitConfiguration];
+       [self.session commitConfiguration];
+        
+       
 
         // and update flash in case it was turned off automatically
         // due to session/preset changes
@@ -1619,6 +1622,7 @@ BOOL _sessionInterrupted = NO;
 //FORK START
 - (void)updateSessionAudioIsMuted:(BOOL)isMuted
 {
+     dispatch_async(self.sessionQueue, ^{
     [self.session beginConfiguration];
 
     for (AVCaptureDeviceInput* input in [self.session inputs]) {
@@ -1666,6 +1670,7 @@ BOOL _sessionInterrupted = NO;
     }
 
     [self.session commitConfiguration];
+     });
  
 }
 //FORK END
