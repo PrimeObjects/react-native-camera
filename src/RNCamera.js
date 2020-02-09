@@ -247,6 +247,7 @@ type PropsType = typeof View.props & {
   focusDepth?: number,
   type?: number | string,
   onCameraReady?: Function,
+  onVideoMergeProgressUpdated?: Function,
   onAudioInterrupted?: Function,
   onAudioConnected?: Function,
   onStatusChange?: Function,
@@ -396,6 +397,7 @@ export default class Camera extends React.Component<PropsType, StateType> {
     focusDepth: PropTypes.number,
     onMountError: PropTypes.func,
     onCameraReady: PropTypes.func,
+    onVideoMergeProgressUpdated: PropTypes.func,
     onAudioInterrupted: PropTypes.func,
     onAudioConnected: PropTypes.func,
     onStatusChange: PropTypes.func,
@@ -635,6 +637,10 @@ export default class Camera extends React.Component<PropsType, StateType> {
   resumeRecording() {
     CameraManager.resumeRecording(this._cameraHandle);
   }
+
+  mergeRecording() {
+    CameraManager.mergeRecording(this._cameraHandle);
+  }
   //FORK END
 
   _onMountError = ({ nativeEvent }: EventCallbackArgumentsType) => {
@@ -648,6 +654,14 @@ export default class Camera extends React.Component<PropsType, StateType> {
       this.props.onCameraReady();
     }
   };
+
+
+  _onVideoMergeProgressUpdated = ({ nativeEvent }: EventCallbackArgumentsType) => {
+    if (this.props.onVideoMergeProgressUpdated) {
+      this.props.onVideoMergeProgressUpdated(nativeEvent);
+    }
+  };
+
 
   _onAudioInterrupted = () => {
     if (this.props.onAudioInterrupted) {
@@ -836,6 +850,7 @@ export default class Camera extends React.Component<PropsType, StateType> {
             ref={this._setReference}
             onMountError={this._onMountError}
             onCameraReady={this._onCameraReady}
+            onVideoMergeProgressUpdated={this._onVideoMergeProgressUpdated}
             onAudioInterrupted={this._onAudioInterrupted}
             onAudioConnected={this._onAudioConnected}
             onGoogleVisionBarcodesDetected={this._onObjectDetected(
@@ -908,6 +923,7 @@ const RNCamera = requireNativeComponent('RNCamera', Camera, {
     onBarCodeRead: true,
     onGoogleVisionBarcodesDetected: true,
     onCameraReady: true,
+    onVideoMergeProgressUpdated: true,
     onAudioInterrupted: true,
     onAudioConnected: true,
     onPictureSaved: true,

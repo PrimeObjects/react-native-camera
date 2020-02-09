@@ -120,7 +120,7 @@
 
 //FORK START
 - (void)pauseRecording;
-- (void)resumeRecording;
+- (void)mergeRecording;
 //FORK END
 
 @end

@@ -102,7 +102,6 @@ BOOL _sessionInterrupted = NO;
         // and we need to also add/remove event listeners.
 
         //FORK START
-        self.paused = NO;
         self.recordingState = RNRecordingStateStopped;
         [self changePreviewOrientation:[UIApplication sharedApplication].statusBarOrientation];
         [self initializeCaptureSessionInput];
@@ -1020,20 +1019,6 @@ BOOL _sessionInterrupted = NO;
         return;
     }
 
-    //FORK START
-   
-    if (self.recordingState == RNRecordingStateRecording || self.recordingState == RNRecordingStateResumed) {
-        return;
-    } else if (self.recordingState == RNRecordingStateStopped) {
-        [self setRecordingState:RNRecordingStateRecording];
-        self.videoOptions = options;
-    } else if (self.recordingState == RNRecordingStatePaused) {
-        [self setRecordingState:RNRecordingStateResumed];
-        options = self.videoOptions;
-    }
-   
-    //FORK END
-
     NSInteger orientation = [options[@"orientation"] integerValue];
 
     // some operations will change our config
@@ -1223,17 +1208,10 @@ BOOL _sessionInterrupted = NO;
 - (void)stopRecording
 {
     dispatch_async(self.sessionQueue, ^{
-        //FORK START
-        if (self.recordingState == RNRecordingStatePaused) {
-            [self exportVideo];
-            [self setRecordingState:RNRecordingStateStopped];
-        return;
-        }
-
-        [self setRecordingState:RNRecordingStateStopped];
-        [self.movieFileOutput stopRecording];
-        //FORK END
         if ([self.movieFileOutput isRecording]) {
+            //FORK START
+            [self setRecordingState:RNRecordingStateStopped];
+            //FORK END
             [self.movieFileOutput stopRecording];
         } else {
             if(_recordRequested){
@@ -1259,14 +1237,33 @@ BOOL _sessionInterrupted = NO;
 //FORK START
 - (void)pauseRecording
 {
-    [self setRecordingState:RNRecordingStatePaused];
-    [self.movieFileOutput stopRecording];
+    dispatch_async(self.sessionQueue, ^{
+        
+        if ([self.movieFileOutput isRecording]) {
+            [self setRecordingState:RNRecordingStatePaused];
+            [self.movieFileOutput stopRecording];
+        } else {
+            if(_recordRequested){
+                _recordRequested = NO;
+            }
+            else{
+                RCTLogWarn(@"Video is not recording.");
+            }
+        }
+    });
 }
 
-- (void)resumeRecording
+- (void)mergeRecording
 {
-    [self record:self.videoOptions resolve:self.videoRecordedResolve reject:self.videoRecordedReject];
+    AVVideoCodecType videoCodec = self.videoCodecType;
+    if (videoCodec == nil) {
+        videoCodec = [self.movieFileOutput.availableVideoCodecTypes firstObject];
+    }
+    [self mergeVideoFiles:self.videoFileURLsToMerge completion:^(NSURL *mergedVideoFile, NSError *error) {
+        
+    }];
 }
+
 
 - (void)setRecordingState:(enum RNRecordingState)state
 {
@@ -1879,20 +1876,26 @@ BOOL _sessionInterrupted = NO;
     if (success && self.videoRecordedResolve != nil) {
 
         //FORK START
-        
         [self.videoFileURLsToMerge addObject:outputFileURL];
-        if (self.recordingState == RNRecordingStateStopped) {
-            [self exportVideo];
-            return;
-        }
-        
         //FORK END
         NSMutableDictionary *result = [[NSMutableDictionary alloc] init];
 
         void (^resolveBlock)(void) = ^() {
             self.videoRecordedResolve(result);
         };
-
+        
+        //FORK START
+        if (self.recordingState == RNRecordingStatePaused)
+        {
+            result[@"reason"] = @"paused";
+        }
+        else
+        {
+            result[@"reason"] = @"stopped";
+        }
+        result[@"videoCount"] = @([self.videoFileURLsToMerge count]);
+        //FORK END
+        
         result[@"uri"] = outputFileURL.absoluteString;
         result[@"videoOrientation"] = @([self.orientation integerValue]);
         result[@"deviceOrientation"] = @([self.deviceOrientation integerValue]);
@@ -1924,26 +1927,6 @@ BOOL _sessionInterrupted = NO;
 
 }
 
-//FORK START
-- (void)exportVideo
-{
-    AVVideoCodecType videoCodec = self.videoCodecType;
-    if (videoCodec == nil) {
-        videoCodec = [self.movieFileOutput.availableVideoCodecTypes firstObject];
-    }
-
-    if ([self.videoFileURLsToMerge count] == 1) {
-        NSURL *videoURL = [self.videoFileURLsToMerge objectAtIndex:0];
-        self.videoRecordedResolve(@{ @"uri": videoURL.absoluteString, @"codec":videoCodec });
-        [self cleanAfterVideoExport];
-    } else {
-        [self mergeVideoFiles:self.videoFileURLsToMerge completion:^(NSURL *mergedVideoFile, NSError *error) {
-            self.videoRecordedResolve(@{ @"uri": mergedVideoFile.absoluteString, @"codec":videoCodec });
-            [self cleanAfterVideoExport];
-        }];
-    }
-}
-//FORK END
 - (void)cleanupCamera {
     self.videoRecordedResolve = nil;
     self.videoRecordedReject = nil;
@@ -2266,6 +2249,7 @@ BOOL _sessionInterrupted = NO;
     self.videoCodecType = nil;
 }
 
+
 # pragma mark - Face detector
 
 - (id)createFaceDetectorManager
@@ -2282,15 +2266,6 @@ BOOL _sessionInterrupted = NO;
 #endif
 
     return nil;
-}
-
-
-- (void)updateExportDisplay {
-    NSDictionary *event = @{@"progress" : [NSNumber numberWithFloat:self.exportSession.progress]};
-    [self onVideoMergeProgUpdated:event];
-    if (self.exportSession.progress > .99) {
-        [self.exportSessionProgressBarTimer invalidate];
-    }
 }
 
 - (UIInterfaceOrientation)getFinalOrientation:(NSArray *)fileURLs {
@@ -2427,49 +2402,68 @@ BOOL _sessionInterrupted = NO;
         self.exportSession.shouldOptimizeForNetworkUse = YES;
         self.exportSession.videoComposition = mutableVideoComposition;
 
-        void(^exportCompletion)(void) = ^{
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(self.exportSession.outputURL, self.exportSession.error);
-            });
-        };
+       
 
-        self.exportSessionProgressBarTimer = [NSTimer scheduledTimerWithTimeInterval:.5 target:self selector:@selector(updateExportDisplay) userInfo:nil repeats:YES];
-
-        [self.exportSession exportAsynchronouslyWithCompletionHandler:^{
+ [self.exportSession exportAsynchronouslyWithCompletionHandler:^{
+        
+         [self cleanAfterVideoExport];
+                           
             switch (self.exportSession.status) {
                 case AVAssetExportSessionStatusFailed:{
-                    NSLog(@"Export Status: Failed");
-                    [self.exportSessionProgressBarTimer invalidate];
-                    self.videoRecordedResolve(@{ @"uri": [NSString string], @"codec": [NSString string] });
-                    [self cleanAfterVideoExport];
+                    NSDictionary *event = @{@"reason": @"merge-failed",
+                            @"videoCount": @(fileURLs.count),
+                            @"uri": self.exportSession.outputURL.absoluteString
+                           };
+                    [self onVideoMergeProgUpdated:event];
                     break;
                 }
                 case AVAssetExportSessionStatusCancelled:{
-                    NSLog(@"Export Status: Cancelled");
-                    [self.exportSessionProgressBarTimer invalidate];
-                    self.videoRecordedResolve(@{ @"uri": [NSString string], @"codec": [NSString string] });
-                    [self cleanAfterVideoExport];
+                    NSDictionary *event = @{@"reason": @"merge-cancelled",
+                    @"videoCount": @(fileURLs.count),
+                    @"uri": self.exportSession.outputURL.absoluteString
+                   };
+                    [self onVideoMergeProgUpdated:event];
                     break;
                 }
                 case AVAssetExportSessionStatusCompleted: {
                     NSLog(@"Successfully merged video files into: %@", filePath);
-                    exportCompletion();
-                    NSDictionary *event = @{@"progress" : [NSNumber numberWithFloat:1.0]};
+                    NSDictionary *event = @{@"reason": @"merge-success",
+                    @"videoCount": @(fileURLs.count),
+                    @"uri": self.exportSession.outputURL.absoluteString
+                    };
                     [self onVideoMergeProgUpdated:event];
                     break;
                 }
                 case AVAssetExportSessionStatusUnknown: {
-                    NSLog(@"Export Status: Unknown");
+                     NSDictionary *event = @{@"reason": @"merge-AVAssetExportSessionStatusUnknown",
+                      @"videoCount": @(fileURLs.count),
+                      @"uri": self.exportSession.outputURL.absoluteString
+                     };
+                     [self onVideoMergeProgUpdated:event];
+                     break;
                 }
                 case AVAssetExportSessionStatusExporting : {
-                    NSLog(@"Export Status: Exporting");
+                    NSDictionary *event = @{@"reason": @"merge-AVAssetExportSessionStatusExporting",
+                    @"videoCount": @(fileURLs.count),
+                     @"videoCount": @(fileURLs.count),
+                                       @"uri": self.exportSession.outputURL.absoluteString
+                                       };
+                    [self onVideoMergeProgUpdated:event];
+                    break;
                 }
                 case AVAssetExportSessionStatusWaiting: {
-                    NSLog(@"Export Status: Waiting");
+                     NSDictionary *event = @{@"reason": @"merge-AVAssetExportSessionStatusWaiting",
+                                       @"videoCount": @(fileURLs.count),
+                                       @"uri": self.exportSession.outputURL,
+                                       @"codec": [NSString string] };
+                                       [self onVideoMergeProgUpdated:event];
+                    break;
                 }
             };
-        }];
+           }];
+        
     }
+    
 }
 //END START
 

@@ -93,7 +93,7 @@ RCT_EXPORT_VIEW_PROPERTY(onVideoMergeProgressUpdated, RCTDirectEventBlock);
 
 - (NSArray<NSString *> *)supportedEvents
 {
-    return @[@"onCameraReady", @"onMountError", @"onBarCodeRead", @"onFacesDetected", @"onPictureTaken", @"onPictureSaved", @"onTextRecognized", @"onGoogleVisionBarcodesDetected", @"onSubjectAreaChanged" 
+    return @[@"onCameraReady", @"onMountError", @"onBarCodeRead", @"onFacesDetected", @"onPictureTaken", @"onPictureSaved", @"onTextRecognized", @"onGoogleVisionBarcodesDetected", @"onSubjectAreaChanged"
     //FORK START
     ,@"onVideoMergeProgressUpdated"
     //FORK END
@@ -461,14 +461,14 @@ RCT_REMAP_METHOD(pauseRecording, reactTag1:(nonnull NSNumber *)reactTag1)
     }];
 }
 
-RCT_REMAP_METHOD(resumeRecording, reactTag2:(nonnull NSNumber *)reactTag2)
+RCT_REMAP_METHOD(mergeRecording, reactTag2:(nonnull NSNumber *)reactTag2)
 {
     [self.bridge.uiManager addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, RNCamera *> *viewRegistry) {
         RNCamera *view = viewRegistry[reactTag2];
         if (![view isKindOfClass:[RNCamera class]]) {
             RCTLogError(@"Invalid view returned from registry, expecting RNCamera, got: %@", view);
         } else {
-            [view resumeRecording];
+            [view mergeRecording];
         }
     }];
 }
