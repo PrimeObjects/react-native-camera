@@ -59,6 +59,8 @@ static NSDictionary *defaultFaceDetectorOptions = nil;
 //FORK START
 BOOL _recordRequested = NO;
 BOOL _sessionInterrupted = NO;
+NSInteger _curAudioSource = 0;
+
 @synthesize recordingState = _recordingState;
 //FORK END
 
@@ -742,12 +744,15 @@ BOOL _sessionInterrupted = NO;
 - (void)updateCaptureAudio
 {
     dispatch_async(self.sessionQueue, ^{
+        /*
         if(self.captureAudio){
             [self initializeAudioCaptureSessionInput];
         }
         else{
             [self removeAudioCaptureSessionInput];
         }
+         */
+        [self initializeAudioCaptureSessionInput];
     });
 }
 
@@ -1018,7 +1023,8 @@ BOOL _sessionInterrupted = NO;
         [self recordWithOrientation:options resolve:resolve reject:reject];
         return;
     }
-
+    
+    
     NSInteger orientation = [options[@"orientation"] integerValue];
 
     // some operations will change our config
@@ -1087,7 +1093,7 @@ BOOL _sessionInterrupted = NO;
     // if captureAudio is set to false on the JS side.
     // Check the property anyways just in case it is manipulated
     // with setNativeProps
-    if(recordAudio && self.captureAudio){
+    //if(recordAudio && self.captureAudio){
 
         // if we haven't initialized our capture session yet
         // initialize it. This will cause video to flicker.
@@ -1101,7 +1107,7 @@ BOOL _sessionInterrupted = NO;
             audioConnection.enabled = YES;
         }
 
-    }
+    //}
 
     // if we have a capture input but are muted
     // disable connection. No flickering here.
@@ -1371,10 +1377,18 @@ BOOL _sessionInterrupted = NO;
 // Note: Ensure this is called within a a session configuration block
 - (void)initializeAudioCaptureSessionInput
 {
+    //FORK START
+    if (_curAudioSource!=self.audioSource)
+    {
+        _curAudioSource=self.audioSource;
+        [self removeAudioCaptureSessionInput];
+    }
+    //FORK END
+    
     // only initialize if not initialized already
     if(self.audioCaptureDeviceInput == nil){
         NSError *error = nil;
-
+        
         //FORK START
 
         AVCaptureDevice *audioCaptureDevice;
@@ -1383,17 +1397,24 @@ BOOL _sessionInterrupted = NO;
             audioCaptureDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
         } else if (self.audioSource == RNCameraAudioSourceMic) {
             audioCaptureDevice = [AVCaptureDevice defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInMicrophone
-                                                    mediaType:nil
+                                                   mediaType:nil
                                                     position:AVCaptureDevicePositionUnspecified];
         } else if (self.audioSource == RNCameraAudioSourceBluetooth) {
             self.session.usesApplicationAudioSession = true;
             self.session.automaticallyConfiguresApplicationAudioSession = false;
-            AVAudioSession *audioSession = [AVAudioSession sharedInstance];
-            [audioSession setCategory:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionAllowBluetooth error:nil];
-
-            for(AVAudioSessionPortDescription* portDescription in audioSession.availableInputs) {
+            [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayAndRecord
+                                           withOptions: AVAudioSessionCategoryOptionAllowBluetooth | AVAudioSessionCategoryOptionDefaultToSpeaker | AVAudioSessionCategoryOptionAllowBluetoothA2DP | AVAudioSessionCategoryOptionAllowAirPlay
+                                                 error:nil];
+            
+            for(AVAudioSessionPortDescription* portDescription in [AVAudioSession sharedInstance].availableInputs) {
                 if (portDescription.portType == AVAudioSessionPortBluetoothHFP) {
-                    [audioSession setPreferredInput:portDescription error:nil];
+                    [[AVAudioSession sharedInstance] setPreferredInput:portDescription error:nil];
+                }
+                else
+                {
+                    if (portDescription.portType == AVAudioSessionCategoryOptionAllowBluetoothA2DP) {
+                        [[AVAudioSession sharedInstance] setPreferredInput:portDescription error:nil];
+                    }
                 }
             }
 
@@ -1600,9 +1621,9 @@ BOOL _sessionInterrupted = NO;
         // the captureAudio prop by a simple permission check;
         // for example, checking
         // [[AVAudioSession sharedInstance] recordPermission] == AVAudioSessionRecordPermissionGranted
-        if(self.captureAudio){
+        //if(self.captureAudio){
             [self initializeAudioCaptureSessionInput];
-        }
+        //}
 
         [self.session commitConfiguration];
     });
@@ -1667,9 +1688,9 @@ BOOL _sessionInterrupted = NO;
                 // initialize audio if we need it
                 // check again captureAudio in case it was changed
                 // in between
-                if(self.captureAudio){
+                //if(self.captureAudio){
                     [self initializeAudioCaptureSessionInput];
-                }
+                //}
             });
         }
 
